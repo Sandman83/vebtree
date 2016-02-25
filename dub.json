@@ -1,0 +1,10 @@
+{
+	"name": "vebtree",
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2016, Alex",
+	"authors": ["Alex"],
+    "targetPath": "./bin",
+    "targetType": "library",
+	"dependencies": {
+	}
+}
