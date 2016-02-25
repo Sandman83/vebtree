@@ -7,20 +7,27 @@ Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gm
 /**
 This module implements a Van Emde Boas tree container.
 
-First of all: the module is still a work in progress. So, don't be surprised to read about what is the current state and what should still to be implemented.
+First of all: the module is still a work in progress. So, don't be surprised to read about what is the current state 
+and what should still to be implemented.
 
-The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size, given a maximum element at the initialization. As long as the usage is intended to contains keys, as in the current version, this restriction is not only a restriction of the amount of elements but also on the contained element values. 
+The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size, given a
+maximum element at the initialization. As long as the usage is intended to contains keys, as in the current version,
+this restriction is not only a restriction of the amount of elements but also on the contained element values. 
 */
 //TODO: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
 //TODO: provide functionality to contain associated data with the keys, i. e. exercise 20.3.2 from Cormen
 /**
-In this version, the maximum size of the universe possible is 2^32. With this restriction all unsigned integers could be used as keys, if the appropriate maximum value is given on initialization. 
+In this version, the maximum size of the universe possible is 2^32. With this restriction all unsigned integers could
+be used as keys, if the appropriate maximum value is given on initialization. 
 
-The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided operations are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For small amount of elements the overhead coming along with the structure take over.
+The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided operations are
+constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For small amount of elements the
+overhead coming along with the structure take over.
 */
 //TODO: provide a rough break even value, e.g. in comparison to a red-black tree.
 /**
-See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
+See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
+Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
 */
 
 module vebtree; 
@@ -51,7 +58,8 @@ unittest
 }
 
 /** 
-This is the interface of a VEB tree. Besides the methods described below, the tree class implements the needed methods for being a range. It is at least an input range, the goal is bidirectional range with a slice operation. 
+This is the interface of a VEB tree. Besides the methods described below, the tree class implements the needed methods
+for being a range. It is at least an input range, the goal is bidirectional range with a slice operation. 
 */
 //TODO: and, maybe, an index operation, which e. g. returns the minimal slice, where the asked element is contained. Here the question should be, whether this operation should be defined, if the element is not currently present. Maybe, it would be interesting in this case to yield a minimal slice of existing values, if the asked value is a member and a minimal slice of not existing values, if the asked value is not currently present?
 
@@ -74,7 +82,9 @@ interface Iveb
 }
 
 /*
-This function returns the upper square root of the given input as integer. It is needed in the initialization step of the VEB tree to calculate the number of children of a given layer. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
+This function returns the upper square root of the given input as integer. It is needed in the initialization step of
+the VEB tree to calculate the number of children of a given layer. The upper square root is defined by 2^{\lceil(\lg
+u)/2\rceil}
 */
 uint higherSquareRoot(size_t value){return 1 << (value.lowerSqrtShift + (value > (1 << value.bsr) || value.bsr & 1));}
 ///
@@ -88,12 +98,15 @@ unittest
 }
 
 /*
-This function returns the floored log2 value of the input. This is done by counting up to the position of the leading bit position and dividing this value by two. This method is needed both by the higher and lower square root calculation. 
+This function returns the floored log2 value of the input. This is done by counting up to the position of the leading
+bit position and dividing this value by two. This method is needed both by the higher and lower square root
+calculation. 
 */
 uint lowerSqrtShift(size_t value) { return bsr(value)/2; }
 
 /*
-This function returns the lower square root of the given input as integer. It is needed by the indexing functions high(x), low(x) and index(x,y) of elements in the tree. The lower square root is defined by 2^{\lfloor(\lg u)/2\rfloor}
+This function returns the lower square root of the given input as integer. It is needed by the indexing functions
+high(x), low(x) and index(x,y) of elements in the tree. The lower square root is defined by 2^{\lfloor(\lg u)/2\rfloor}
 */
 uint lowerSquareRoot(size_t value) { return 1 << lowerSqrtShift(value); }
 ///
@@ -106,7 +119,8 @@ unittest
 }
 
 /*
-This is an index function defined as \lfloor x/lowerSquareRoot(u)\rfloor. It is needed to find the appropriate cluster of a element in the tree. 
+This is an index function defined as \lfloor x/lowerSquareRoot(u)\rfloor. It is needed to find the appropriate cluster
+of a element in the tree. 
 */
 uint high(uint value, size_t universeSize) { return value/lowerSquareRoot(universeSize); }
 ///
@@ -116,7 +130,8 @@ unittest
 }
 
 /*
-This is an index function defined as fmod(value, lowerSquareRoot(universeSize)). It is needed to find the appropriate value inside a cluster. 
+This is an index function defined as fmod(value, lowerSquareRoot(universeSize)). It is needed to find the appropriate
+value inside a cluster. 
 */
 uint low(uint value, size_t universeSize){ return value & (lowerSquareRoot(universeSize) - 1); }
 ///
@@ -126,12 +141,15 @@ unittest
 }
 
 /*
-This is an index function to retain the searched value. It is defined as x * lowerSquareRoot(u) + y. Beyond this, the relation holds: x = index(high(x), low(x))
+This is an index function to retain the searched value. It is defined as x * lowerSquareRoot(u) + y. Beyond this, the
+relation holds: x = index(high(x), low(x))
 */
 uint index(size_t universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
 
 /**
-This is the class to represent a VEB tree node. As memebers it contains the universeSize, the min and the max value as well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size higherSquareRoot(u). Each child node has a universe size of lowerSquareRoot(u)
+This is the class to represent a VEB tree node. As memebers it contains the universeSize, the min and the max value as
+well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size higherSquareRoot(u). Each
+child node has a universe size of lowerSquareRoot(u)
 */
 private class vebNode
 {    
@@ -372,7 +390,9 @@ private class vebNode
 }
 
 /**
-This class represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only the reference to the root element, as the theory tells. 
+This class represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step
+wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
+the reference to the root element, as the theory tells. 
 */
 class vebTree : Iveb
 {
