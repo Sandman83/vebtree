@@ -8,23 +8,33 @@ Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gm
 This module implements a Van Emde Boas tree container.
 
 First of all: the module is still a work in progress. So, don't be surprised to read about what is the current state 
-and what should still to be implemented.
+and what should still be implemented.
 
 The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size, given a
 maximum element at the initialization. As long as the usage is intended to contains keys, as in the current version,
 this restriction is not only a restriction of the amount of elements but also on the contained element values. 
 */
+
 //TODO: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
 //TODO: provide functionality to contain associated data with the keys, i. e. exercise 20.3.2 from Cormen
+
 /**
 In this version, the maximum size of the universe possible is 2^32. With this restriction all unsigned integers could
 be used as keys, if the appropriate maximum value is given on initialization. 
 
 The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided operations are
 constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For small amount of elements the
-overhead coming along with the structure take over.
+overhead coming along with the structure take over. For example, for a universe size of 2^14 and 15872 insertion
+operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one of the unittests shows. 
 */
-//TODO: provide a rough break even value, e.g. in comparison to a red-black tree.
+
+/**
+Be aware, the current container is intended to be used with keys. This implies, that the capacity, fixed on its
+initialization has two meanings. As usual, it shows the maximum amount of elements the instanciated tree can keep. But 
+also, it states, that no value bigger then capacity - 1 exists in the tree. This, and the fact, that only non-negative 
+values can be used is infered from the term "key".
+*/
+
 /**
 See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
 Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
@@ -61,7 +71,13 @@ unittest
 This is the interface of a VEB tree. Besides the methods described below, the tree class implements the needed methods
 for being a range. It is at least an input range, the goal is bidirectional range with a slice operation. 
 */
-//TODO: and, maybe, an index operation, which e. g. returns the minimal slice, where the asked element is contained. Here the question should be, whether this operation should be defined, if the element is not currently present. Maybe, it would be interesting in this case to yield a minimal slice of existing values, if the asked value is a member and a minimal slice of not existing values, if the asked value is not currently present?
+
+/*
+    //TODO: and, maybe, an index operation, which e. g. returns the minimal slice, where the asked element is 
+    contained. Here the question should be, whether this operation should be defined, if the element is not currently
+    present. Maybe, it would be interesting in this case to yield a minimal slice of existing values, if the asked
+    value is a member and a minimal slice of not existing values, if the asked value is not currently present?
+*/
 
 interface Iveb
 {
@@ -153,9 +169,7 @@ child node has a universe size of lowerSquareRoot(u)
 */
 private class vebNode
 {    
-    // TODO: change universeSize to an immutable value
-    size_t _universeSize;
-    @property void universeSize(size_t value){ _universeSize = value; }
+    immutable size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
     
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
@@ -197,7 +211,9 @@ private class vebNode
         }
     }
     
-    // this function inserts a value into an empty node. The difference between empty and non empty insert is, that the algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max members. 
+    // this function inserts a value into an empty node. The difference between empty and non empty insert is, that the
+    // algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max
+    // members. 
     private void emptyInsert(uint x)
     {
         min = x; 
@@ -207,8 +223,7 @@ private class vebNode
     // this function inserts a value into a generic node. If the member exists, no insertion will be done. 
     void insert(uint x)
     {
-        // TODO: to check, how this could be checked in a better way,
-        // so no extra call to a log2(log2()) function is done. 
+        // TODO: to check, how this could be checked in a better way.
         if(member(x)) 
             return; 
         
@@ -239,8 +254,7 @@ private class vebNode
     // this function removes a value from the tree. If the value doesn't exist in the tree nothing will be happen. 
     void remove(uint x)
     {
-        // TODO: to check, how this could be checked in a better way,
-        // so no extra call to a log2(log2()) function is done. 
+        // TODO: to check, how this could be checked in a better way.
         if(!member(x))
             return; 
         
@@ -283,7 +297,11 @@ private class vebNode
     
     // this function returns the successor of the given value, even, if the value is not present in the tree. 
     // If the value is maximum or greater then the maximum of the tree null is returned. 
-    // TODO: the object (which corresponds to a more specific tree, then a generic one) to change this function, so it always returns a valid value. This value should be the universe size, or the member amount (which is still one more, then the greatest element), if the provided input has no successors. 
+    /*
+        TODO: the object (which corresponds to a more specific tree, then a generic one) is to change this function,
+        so it always returns a valid value. This value should be the universe size, or the member amount (which is
+        still one more, then the greatest element), if the provided input has no successors. 
+    */
     Nullable!uint successor(uint x)
     {
         Nullable!uint result; 
@@ -321,7 +339,12 @@ private class vebNode
     
     // this function returns the predecessor of the given value, even, if the value is not present in the tree. 
     // if the value is the minimum or smaller then the minimum of the tree null is returned.
-    // TODO: the object (which corresponds to a more specific tree, then a generic one) to change this function, so it always returns a valid value. This value should be either the provided value itself, if it is a member of the tree, or zero, if not. This implies, that zero is always a member of the tree. 
+    /*
+        TODO: the object (which corresponds to a more specific tree, then a generic one) is to change this function, so
+        it always returns a valid value. This value should be either the provided value itself, if it is a member of
+        the tree, the next lower element, if it exists, or zero, if not. This implies, that zero is always a member of
+        the tree, respectively has to be checked by user. 
+    */
     Nullable!uint predecessor(uint x)
     {
         Nullable!uint result; 
@@ -398,7 +421,8 @@ class vebTree : Iveb
 {
     // the root element of the tree. 
     private vebNode root; 
-    // this member stores the provided input on initialization. This value could be used to hard prevent of adding elements between this value and the capacity of the tree. 
+    // this member stores the provided input on initialization. This value could be used to hard prevent of adding
+    // elements between this value and the capacity of the tree. 
     private uint _maximumElement; 
     
     /// default constructor of a VEB tree is disabled. 
@@ -410,7 +434,10 @@ class vebTree : Iveb
         _maximumElement = maximumElement; 
     }
     
-    /// this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum element 
+    /** 
+        this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
+        element 
+    */
     size_t capacity(){ return root.universeSize; }
     
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
@@ -428,7 +455,7 @@ class vebTree : Iveb
     /// this method is used to determine the maximum of the tree    
     @property Nullable!uint max(){ return back; }
     
-    /// this method retrieves the successors of the given input.
+    /// this method retrieves the successor of the given input.
     Nullable!uint successor(uint x){ return root.successor(x); }
     
     /// this method retrieves the predecessor of the given input. 
@@ -477,9 +504,28 @@ class vebTree : Iveb
             }
             return n; 
         }
+        
+        uint fill(ref uint[] arr)
+        {
+            uint n; 
+            while(n != 31*capacity/32)
+            {
+                uint x = uniform(0, cast(uint)(capacity - 1), rndGenInUse);
+                // the check for membership is done to add only on inserting to the counter, not just 
+                // because visiting the the loop
+                if(!member(x))
+                {
+                    insert(x); 
+                    arr ~= x; 
+                    ++n; 
+                }
+            
+            }
+            assert(n == 31*capacity/32); 
+            return n; 
+        }
     }
 }
-
 
 ///
 unittest
@@ -518,7 +564,7 @@ unittest
 {
     uint currentSeed = 83843; // unpredictableSeed();
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    uint M = uniform(0U,1 << 16, rndGenInUse); //set universe size to some integer. 
+    uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
     vebTree vT = new vebTree(M); //create the tree
     assert(vT.capacity == nextPowerOfTwo(M)); 
@@ -641,4 +687,55 @@ unittest
     assert(!vT.member(0x00f0)); 
     vT.remove(0x000f); 
     assert(!vT.member(0x000f)); 
+}
+
+/// 
+unittest
+{
+    //stress test
+    uint currentSeed = 1948642567; //unpredictableSeed(); 
+    //writeln(currentSeed); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
+    vebTree vT = new vebTree(M); 
+    //writeln("vT.capacity: ", vT.capacity); 
+    uint[] arr; 
+    auto howMuchFilled = vT.fill(arr); 
+    assert(arr.length == howMuchFilled); 
+    
+    vebTree vT2 = new vebTree(M); 
+    assert(vT2.capacity == vT.capacity); 
+    
+    import std.datetime; import std.conv : to;
+    import std.container;
+    auto rbt = redBlackTree!uint(0); 
+    rbt.clear; 
+    
+    void fill1()
+    {
+        foreach(uint i; arr)
+        {
+            vT2.insert(i); 
+        }
+    }
+    
+    void fill2()
+    {
+        foreach(uint i; arr)
+        {
+            rbt.insert(i); 
+        }
+    }
+    
+    /*
+    import std.stdio; 
+    writeln("howMuchFilled: ", howMuchFilled);
+    auto r = benchmark!(fill1, fill2)(1); 
+    auto f0Result = to!Duration(r[0]); 
+    auto f1Result = to!Duration(r[1]); 
+    writeln("VEB: ", f0Result); 
+    writeln("rbt: ", f1Result); 
+    assert(f0Result < f1Result); 
+    */
 }
