@@ -434,6 +434,23 @@ class vebTree : Iveb
         _maximumElement = maximumElement; 
     }
     
+    /// another possibility is to construct a VEB tree by providing an array.
+    this(uint[] range)
+    {
+        import std.algorithm.comparison; 
+        import std.algorithm.iteration; 
+        // first, we have to determine the size of the tree. 
+        // it is either derived from the length of the given tree or its greatest element
+        size_t limit = max(range.length, reduce!(max)(range)); 
+        
+        // without std.algorithm.iteration: 
+        // size_t limit = range.length; 
+        // foreach(uint i; range) limit = max(limit, i); 
+        
+        root = new vebNode(nextPowerOfTwo(limit));
+        foreach(uint i; range) root.insert(i); 
+    }
+    
     /** 
         this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
         element 
@@ -472,12 +489,14 @@ class vebTree : Iveb
     
     // forward range also needs save. This property is something strange. 
     // TODO: implement the save function 
-    @property vebTree save() { assert(0); }
+    @property vebTree save()
+    { 
+        assert(0); 
+    }
     
     // TODO: implement method size_t elementCount(), which returns the current amount of set elements. 
     // TODO: implement slice operator (full range, range between two values)
     // TODO: implement index operator? which returns ranges??
-    // TODO: implement initialization with a range 
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
     // bidirectional range also needs
@@ -738,4 +757,34 @@ unittest
     writeln("rbt: ", f1Result); 
     assert(f0Result < f1Result); 
     */
+}
+
+unittest
+{
+    import std.stdio; 
+    import std.algorithm; 
+    uint currentSeed = 1230394; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer.
+    uint[] sourceArr; 
+    sourceArr.length = M; 
+    // generate a random array as the source for the tree
+    for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
+    
+    // constructor to test
+    vebTree vT = new vebTree(sourceArr); 
+    
+    // make the array values unique. 
+    auto uniqueArr = sort(sourceArr).uniq;
+    // check, that all values are filled 
+    foreach(uint i; uniqueArr)
+    {
+        assert(vT.member(i)); 
+        vT.remove(i); 
+    }
+    // check, that no other elements are present. 
+    assert(vT.empty); 
+    
+    
+    
 }
