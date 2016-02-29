@@ -38,6 +38,6 @@ assert(!vT.member(865));
 
 Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
 
-License: http://boost.org/LICENSE_1_0.txt, Boost License 1.0.
+License: https://opensource.org/licenses/MIT, MIT License
 
 Authors: Alexander Orlov, sascha.orlov@gmail.com
