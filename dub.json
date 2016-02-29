@@ -3,6 +3,7 @@
 	"description": "A library for van Emde Boas tree",
 	"copyright": "Copyright © 2016, Alexander Orlov",
 	"authors": ["Alexander Orlov"],
+    "license": "MIT",
     "targetPath": "./bin",
     "targetType": "library",
 	"dependencies": {
