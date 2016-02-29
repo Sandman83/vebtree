@@ -1,38 +1,38 @@
 /**
 Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
-License: $(LINK2 http://boost.org/LICENSE_1_0.txt, Boost License 1.0).
+License: $(LINK2 https://opensource.org/licenses/MIT, MIT License).
 Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gmail.com) 
 */
 
 /**
 This module implements a Van Emde Boas tree container.
 
-First of all: the module is still a work in progress. So, don't be surprised to read about what is the current state 
-and what should still be implemented.
+The module is still a work in progress. So, if you find an error by chance, please let me know in any way.
 
 The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size, given a
 maximum element at the initialization. As long as the usage is intended to contains keys, as in the current version,
 this restriction is not only a restriction of the amount of elements but also on the contained element values. 
 */
 
-//TODO: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
-//TODO: provide functionality to contain associated data with the keys, i. e. exercise 20.3.2 from Cormen
+// TODO: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
+// TODO: provide functionality to contain associated data with the keys, i. e. exercise 20.3.2 from Cormen
 
 /**
 In this version, the maximum size of the universe possible is 2^32. With this restriction all unsigned integers could
 be used as keys, if the appropriate maximum value is given on initialization. 
 
-The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided operations are
-constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For small amount of elements the
-overhead coming along with the structure take over. For example, for a universe size of 2^14 and 15872 insertion
-operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one of the unittests shows. 
+The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard operations
+of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For small amount of
+elements the overhead coming along with the structure take over. For example, for a universe size of 2^14 and 15872
+insertion operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one of the unittests
+shows. 
 */
 
 /**
 Be aware, the current container is intended to be used with keys. This implies, that the capacity, fixed on its
 initialization has two meanings. As usual, it shows the maximum amount of elements the instanciated tree can keep. But 
 also, it states, that no value bigger then capacity - 1 exists in the tree. This, and the fact, that only non-negative 
-values can be used is infered from the term "key".
+values can be used are infered from the term "key".
 */
 
 /**
@@ -45,19 +45,13 @@ module vebtree;
 import std.typecons; /// used for Nullable!uint 
 import core.bitop; 
 
-version(unittest)
-{ 
-    //import std.stdio;
-    import std.random;
-    Random rndGenInUse;
-}
+version(unittest) { import std.random; Random rndGenInUse; }
 
 // this would be useful in case of coding the keys as a bitfield
 // enum uint WORD = uint.sizeof * 8;
 
 // defines the base universe size of a tree node. 
 ubyte BASE_SIZE = 2; 
-
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
 size_t nextPowerOfTwo(size_t value) { return 1 << (bsr(value) + 1); }
@@ -69,16 +63,8 @@ unittest
 
 /** 
 This is the interface of a VEB tree. Besides the methods described below, the tree class implements the needed methods
-for being a range. It is at least an input range, the goal is bidirectional range with a slice operation. 
+for being a range. It is a bidirectional range with slice operations.
 */
-
-/*
-    //TODO: and, maybe, an index operation, which e. g. returns the minimal slice, where the asked element is 
-    contained. Here the question should be, whether this operation should be defined, if the element is not currently
-    present. Maybe, it would be interesting in this case to yield a minimal slice of existing values, if the asked
-    value is a member and a minimal slice of not existing values, if the asked value is not currently present?
-*/
-
 interface Iveb
 {
     //
@@ -172,6 +158,8 @@ private class vebNode
     immutable size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
     
+    version(unittest){ size_t elementCount; }
+    
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
     Nullable!uint _min; 
     @property void min(uint value){ _min = value; }
@@ -226,6 +214,8 @@ private class vebNode
         // TODO: to check, how this could be checked in a better way.
         if(member(x)) 
             return; 
+
+        version(unittest){ elementCount++; }
         
         if(this.empty)
             emptyInsert(x); 
@@ -257,6 +247,8 @@ private class vebNode
         // TODO: to check, how this could be checked in a better way.
         if(!member(x))
             return; 
+        
+        version(unittest){ elementCount--; }
         
         // case: there is only single element
         if(min == max)
@@ -297,11 +289,6 @@ private class vebNode
     
     // this function returns the successor of the given value, even, if the value is not present in the tree. 
     // If the value is maximum or greater then the maximum of the tree null is returned. 
-    /*
-        TODO: the object (which corresponds to a more specific tree, then a generic one) is to change this function,
-        so it always returns a valid value. This value should be the universe size, or the member amount (which is
-        still one more, then the greatest element), if the provided input has no successors. 
-    */
     Nullable!uint successor(uint x)
     {
         Nullable!uint result; 
@@ -317,19 +304,22 @@ private class vebNode
                 result = min; 
             else
             {
-                auto maxlow = _cluster[high(x)].max;
-                if(!maxlow.isNull && low(x) < maxlow)
+                if(!max.isNull && x < max)
                 {
-                    auto offset = _cluster[high(x)].successor(low(x));
-                    result = index(high(x), offset); 
-                }
-                else
-                {
-                    auto succcluster = _summary.successor(high(x)); 
-                    if(!succcluster.isNull)
+                    auto maxlow = _cluster[high(x)].max;
+                    if(!maxlow.isNull && low(x) < maxlow)
                     {
-                        auto offset = _cluster[succcluster].min; 
-                        result = index(succcluster, offset); 
+                        auto offset = _cluster[high(x)].successor(low(x));
+                        result = index(high(x), offset); 
+                    }
+                    else
+                    {
+                        auto succcluster = _summary.successor(high(x)); 
+                        if(!succcluster.isNull)
+                        {
+                            auto offset = _cluster[succcluster].min; 
+                            result = index(succcluster, offset); 
+                        }
                     }
                 }
             }
@@ -339,12 +329,6 @@ private class vebNode
     
     // this function returns the predecessor of the given value, even, if the value is not present in the tree. 
     // if the value is the minimum or smaller then the minimum of the tree null is returned.
-    /*
-        TODO: the object (which corresponds to a more specific tree, then a generic one) is to change this function, so
-        it always returns a valid value. This value should be either the provided value itself, if it is a member of
-        the tree, the next lower element, if it exists, or zero, if not. This implies, that zero is always a member of
-        the tree, respectively has to be checked by user. 
-    */
     Nullable!uint predecessor(uint x)
     {
         Nullable!uint result; 
@@ -421,9 +405,6 @@ class vebTree : Iveb
 {
     // the root element of the tree. 
     private vebNode root; 
-    // this member stores the provided input on initialization. This value could be used to hard prevent of adding
-    // elements between this value and the capacity of the tree. 
-    private uint _maximumElement; 
     
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
@@ -431,7 +412,8 @@ class vebTree : Iveb
     this(uint maximumElement)
     {
         root = new vebNode(nextPowerOfTwo(maximumElement));
-        _maximumElement = maximumElement; 
+        
+        version(unittest){ _maximumElement = maximumElement; }
     }
     
     /// another possibility is to construct a VEB tree by providing an array.
@@ -487,16 +469,118 @@ class vebTree : Iveb
     // this method removes the minimum element
     void popFront(){ if(!empty) root.remove(min); }
     
-    // forward range also needs save. This property is something strange. 
-    // TODO: implement the save function 
-    @property vebTree save()
-    { 
-        assert(0); 
+    // forward range also needs save. This is a draft version of the save function, it uses the opslice of the class to 
+    // construct a new one via an array
+    @property vebTree save(){ return new vebTree(this[]); }
+    
+    /**
+    opSlice operator to get the underlying array. 
+    This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
+    proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
+    */
+    uint[] opSlice()
+    {
+        uint[] retArray; 
+        if(!min.isNull)
+        {
+            retArray ~= min;
+            if(min != max)
+            {
+                retArray.reserve(capacity);
+                while(retArray[$-1] != max)
+                    retArray ~= successor(retArray[$-1]); 
+            }
+        }
+        return retArray; 
     }
     
-    // TODO: implement method size_t elementCount(), which returns the current amount of set elements. 
-    // TODO: implement slice operator (full range, range between two values)
-    // TODO: implement index operator? which returns ranges??
+    /**
+    opSlice operator to get the underlying array between given bounds. 
+    This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
+    proportional to min(n, m), where n is the number of elements between bounds and m are the number of present 
+    elements in the tree. 
+    */
+    uint[] opSlice(uint begin, uint end)
+    {
+        uint[] retArray; 
+        if(begin < end && begin < max)
+        {
+            if(!min.isNull)
+            {
+                if(this.member(begin))
+                    retArray ~= begin; 
+                else
+                {
+                    uint i = successor(begin);
+                    if(i < end)
+                        retArray ~= i; 
+                }
+                if(min != max)
+                {
+                    import std.algorithm.comparison;
+                    uint limit = min(end, this.max); 
+                    
+                    retArray.reserve(limit-begin); 
+                    uint i = successor(retArray[$-1]); 
+                    while(i < limit)
+                    {
+                        retArray ~= i; 
+                        i = successor(retArray[$-1]); 
+                    }
+                }
+            }
+        }
+        return retArray; 
+    }
+    
+    /**
+    This is a nontrivial opIndex operator on indizies of the tree. Given an index a range (!) is returned, which is, 
+    either the range of elements in the tree build up by [predecessor(i) .. successor(i)] (i. e. excluding the 
+    successor(i)), when the given index is not set. Or, if the given index is set, [member(i), successor(i)]. If an 
+    index out of bounds is given, an empty array is returned. The tree must not be empty to use this function. 
+    */
+    uint[] opIndex(uint i)
+    {
+        import std.algorithm;
+        import std.range;
+        import std.exception; 
+        enforce(!this.empty);
+
+        uint[] retArr;         
+        if(i < this.capacity)
+        {
+            uint absoluteMin; 
+            uint absoluteMax; 
+            
+            if(i < this.min)
+            {
+                
+                absoluteMin = 0; 
+                absoluteMax = this.min; 
+            }
+            else
+            {
+                if(i >= this.max)
+                {
+                    absoluteMax = cast(uint)(capacity - 1); 
+                    absoluteMin = this.max; 
+                }
+                else
+                {
+                    absoluteMax = successor(i); 
+                    if(this.member(i))
+                        absoluteMin = i; 
+                    else
+                        absoluteMin = predecessor(i); 
+                }
+            }
+            retArr = iota(absoluteMin, absoluteMax).array;    
+            if(i >= this.max)
+                retArr ~= absoluteMax; 
+        }
+        return retArr; 
+    }
+    
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
     // bidirectional range also needs
@@ -505,8 +589,20 @@ class vebTree : Iveb
     // this method removes the maximum element 
     void popBack() { if(!empty) root.remove(max); }
     
+    /**
+    This method returns the amount of elements currently present in the tree.
+    This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
+    proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
+    */
+    @property size_t elementCount(){ return this[].length; }
+    
     version(unittest)
     {
+        // this member stores the provided input on initialization. This value could be used to hard prevent of adding
+        // elements between this value and the capacity of the tree. 
+        private uint _maximumElement; 
+        @property size_t elementCount_ut(){ return root.elementCount; }
+        
         uint fill(uint m)
         {
             uint n; 
@@ -524,10 +620,10 @@ class vebTree : Iveb
             return n; 
         }
         
-        uint fill(ref uint[] arr)
+        uint fill(ref uint[] arr, uint fillPercentage = 31)
         {
             uint n; 
-            while(n != 31*capacity/32)
+            while(n != fillPercentage * capacity/32)
             {
                 uint x = uniform(0, cast(uint)(capacity - 1), rndGenInUse);
                 // the check for membership is done to add only on inserting to the counter, not just 
@@ -540,7 +636,7 @@ class vebTree : Iveb
                 }
             
             }
-            assert(n == 31*capacity/32); 
+            assert(n == fillPercentage*capacity/32); 
             return n; 
         }
     }
@@ -713,12 +809,10 @@ unittest
 {
     //stress test
     uint currentSeed = 1948642567; //unpredictableSeed(); 
-    //writeln(currentSeed); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
     vebTree vT = new vebTree(M); 
-    //writeln("vT.capacity: ", vT.capacity); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr); 
     assert(arr.length == howMuchFilled); 
@@ -759,9 +853,9 @@ unittest
     */
 }
 
+///
 unittest
 {
-    import std.stdio; 
     import std.algorithm; 
     uint currentSeed = 1230394; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
@@ -784,7 +878,83 @@ unittest
     }
     // check, that no other elements are present. 
     assert(vT.empty); 
+}
+
+///
+unittest
+{
+    uint currentSeed = 2349062; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    vebTree vT = new vebTree(M); 
+    uint[] arr; 
+    vT.fill(arr, 16); 
+    import std.algorithm;
+    assert(setSymmetricDifference(vT[], sort(arr)).empty); 
+}
+
+///
+unittest
+{
+    uint currentSeed = 2309532090; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    vebTree vT = new vebTree(M); 
+    uint[] arr; 
+    vT.fill(arr, 16); 
     
+    uint begin = 5; 
+    uint end = 100; 
     
+    import std.algorithm; 
+    auto filterRes = sort(arr).filter!(a => a >= begin && a < end); 
+    assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
+}
+
+///
+unittest
+{
+    uint currentSeed = 1223409; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    vebTree vT = new vebTree(M); 
+    uint[] arr; 
+    vT.fill(arr, 16); 
+    assert(vT.elementCount == vT.elementCount_ut); 
+}
+
+///
+unittest
+{
+    uint currentSeed = 1435856534; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    vebTree vT = new vebTree(M); 
+    uint[] arr; 
+    vT.fill(arr, 16); 
     
+    assert(!vT.member(0));
+    assert(!vT.member(1)); 
+    import std.algorithm; 
+    assert(startsWith(vT[1], 0)); 
+    assert(vT.successor(vT[1][$-1]) == vT.successor(1));
+    assert(startsWith(vT[vT.successor(1)],vT.min)); 
+    assert(!vT.member(65535)); 
+    assert(vT[65535] == [65534, 65535]); 
+    assert(vT.member(4)); 
+    assert(startsWith(vT[4],4)); 
+    assert(!vT.member(vT[4][$-1])); 
+    assert(!vT.member(5)); 
+    assert(startsWith(vT[5],4)); 
+    assert(vT[5][$-1] == vT[4][$-1]);
+}
+
+unittest
+{
+    import std.range;
+    assert(isBidirectionalRange!vebTree);
 }

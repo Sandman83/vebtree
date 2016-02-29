@@ -1,8 +1,8 @@
 {
 	"name": "vebtree",
-	"description": "A minimal D application.",
-	"copyright": "Copyright © 2016, Alex",
-	"authors": ["Alex"],
+	"description": "A library for van Emde Boas tree",
+	"copyright": "Copyright © 2016, Alexander Orlov",
+	"authors": ["Alexander Orlov"],
     "targetPath": "./bin",
     "targetType": "library",
 	"dependencies": {
