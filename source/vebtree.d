@@ -594,14 +594,14 @@ class vebTree : Iveb
     This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    @property size_t elementCount(){ return this[].length; }
+    @property size_t length(){ return this[].length; }
     
     version(unittest)
     {
         // this member stores the provided input on initialization. This value could be used to hard prevent of adding
         // elements between this value and the capacity of the tree. 
         private uint _maximumElement; 
-        @property size_t elementCount_ut(){ return root.elementCount; }
+        @property size_t elementCount(){ return root.elementCount; }
         
         uint fill(uint m)
         {
@@ -923,7 +923,7 @@ unittest
     vebTree vT = new vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
-    assert(vT.elementCount == vT.elementCount_ut); 
+    assert(vT.length == vT.elementCount); 
 }
 
 ///
