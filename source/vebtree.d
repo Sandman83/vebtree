@@ -44,11 +44,23 @@ module vebtree;
 
 import std.typecons; /// used for Nullable!uint 
 import core.bitop; 
+import comp = std.algorithm.comparison;
+import std.algorithm.iteration; 
+import std.exception; 
+import std.range; 
 
-version(unittest) { import std.random; Random rndGenInUse; }
-
-// this would be useful in case of coding the keys as a bitfield
-// enum uint WORD = uint.sizeof * 8;
+version(unittest) 
+{ 
+    import std.random; 
+    import std.datetime; 
+    import std.conv : to;
+    import std.container;
+    import std.algorithm.setops; 
+    import std.algorithm.sorting;
+    import std.algorithm.searching;     
+    
+    Random rndGenInUse; 
+}
 
 // defines the base universe size of a tree node. 
 ubyte BASE_SIZE = 2; 
@@ -59,29 +71,7 @@ size_t nextPowerOfTwo(size_t value) { return 1 << (bsr(value) + 1); }
 unittest
 {
     assert(nextPowerOfTwo(1000) == 1024); 
-}
-
-/** 
-This is the interface of a VEB tree. Besides the methods described below, the tree class implements the needed methods
-for being a range. It is a bidirectional range with slice operations.
-*/
-interface Iveb
-{
-    //
-    void insert(uint x); 
-    void insert(uint[] arr); 
-    //
-    void remove(uint x); 
-    //
-    bool member(uint x); 
-    //
-    Nullable!uint min(); 
-    //
-    Nullable!uint max(); 
-    //
-    Nullable!uint successor(uint x); 
-    //
-    Nullable!uint predecessor(uint x); 
+    assert(nextPowerOfTwo(1024) == 2048); 
 }
 
 /*
@@ -106,6 +96,11 @@ bit position and dividing this value by two. This method is needed both by the h
 calculation. 
 */
 uint lowerSqrtShift(size_t value) { return bsr(value)/2; }
+///
+unittest
+{
+    assert(lowerSqrtShift(8) == 1); 
+}
 
 /*
 This function returns the lower square root of the given input as integer. It is needed by the indexing functions
@@ -129,7 +124,7 @@ uint high(uint value, size_t universeSize) { return value/lowerSquareRoot(univer
 ///
 unittest
 {
-    assert(.high(7,16) == 1); 
+    assert(high(7,16) == 1); 
 }
 
 /*
@@ -140,7 +135,7 @@ uint low(uint value, size_t universeSize){ return value & (lowerSquareRoot(unive
 ///
 unittest
 {
-    assert(.low(7,16) == 3); 
+    assert(low(7,16) == 3); 
 }
 
 /*
@@ -148,9 +143,21 @@ This is an index function to retain the searched value. It is defined as x * low
 relation holds: x = index(high(x), low(x))
 */
 uint index(size_t universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
+///
+unittest
+{
+    uint currentSeed = unpredictableSeed();
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
+    auto U = cast(uint)nextPowerOfTwo(M); 
+    uint x = uniform(0U, U, rndGenInUse); 
+    uint y = uniform(0U, U, rndGenInUse); 
+    
+    assert(index(U, high(x, U), low(x, U)) == x); 
+}
 
 /**
-This is the class to represent a VEB tree node. As memebers it contains the universeSize, the min and the max value as
+This is the struct to represent a VEB tree node. As memebers it contains the universeSize, the min and the max value as
 well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size higherSquareRoot(u). Each
 child node has a universe size of lowerSquareRoot(u)
 */
@@ -190,8 +197,6 @@ private struct vebNode
     {
         if(universeSize > BASE_SIZE)
         {
-            import std.algorithm; 
-            import std.range; 
             auto childUniverseSize = higherSquareRoot(universeSize); 
             _summary = new vebNode(childUniverseSize); 
             _cluster = iota(0,childUniverseSize).map!(a => vebNode(lowerSquareRoot(universeSize))).array; 
@@ -215,7 +220,7 @@ private struct vebNode
         else 
         {
             if(x < min)
-            {//import std.algorithm; swap(min.get, x); 
+            {
                 auto temp = x; x = min; min = temp; 
             }
             
@@ -384,17 +389,21 @@ private struct vebNode
 }
 
 /**
-This class represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step
+This struct represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step
 wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
-the reference to the root element, as the theory tells. 
+the reference to the root element, as the theory tells. The tree implements not only the documented interface of a 
+van VEB tree, but is also a bidirectional range. It supports two slice operations and a non-trivial opIndex operator. 
 */
-struct vebTree // : Iveb
+struct vebTree
 {
     // the root element of the tree. 
     private vebNode root; 
+    // this member is updated on every insertion and deletion to give the current element count on O(1)
     private uint _elementCount; 
+    
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
+    
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
     this(uint maximumElement)
     {
@@ -406,17 +415,17 @@ struct vebTree // : Iveb
     /// another possibility is to construct a VEB tree by providing an array.
     this(uint[] range)
     {
-        import std.exception; 
         // check, whether the range is not too long. 
         enforce(cast(uint)range.length == range.length);
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         uint limit = cast(uint)range.length; 
-        foreach(uint i; range) limit = i > limit ? i : limit;
+        foreach(uint i; range) limit = comp.max(limit,i); 
         
         // initialize the root, with the found limit 
         root = vebNode(nextPowerOfTwo(limit));
+        version(unittest){ _maximumElement = limit; }
         
         foreach(uint i; range) insert(i); 
     }
@@ -474,9 +483,9 @@ struct vebTree // : Iveb
     // this method removes the minimum element
     void popFront(){ if(!empty) remove(min); }
     
-    // forward range also needs save. This is a draft version of the save function, it uses the opslice of the class to 
-    // construct a new one via an array
-    @property vebTree save(){ return vebTree(this[]); }
+    // forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
+    // to construct a new one via an array
+    @property vebTree save() { return vebTree(this[]); }
     
     /**
     opSlice operator to get the underlying array. 
@@ -522,8 +531,7 @@ struct vebTree // : Iveb
                 }
                 if(min != max)
                 {
-                    import std.algorithm.comparison;
-                    uint limit = min(end, this.max); 
+                    uint limit = comp.min(end, this.max); 
                     
                     retArray.reserve(limit-begin); 
                     uint i = successor(retArray[$-1]); 
@@ -545,10 +553,7 @@ struct vebTree // : Iveb
     index out of bounds is given, an empty array is returned. The tree must not be empty to use this function. 
     */
     uint[] opIndex(uint i)
-    {
-        import std.algorithm;
-        import std.range;
-        import std.exception; 
+    {        
         enforce(!this.empty);
 
         uint[] retArr;         
@@ -648,6 +653,34 @@ struct vebTree // : Iveb
 }
 
 ///
+version(unittest)
+{   
+    vebTree fill(uint M)
+    {
+        vebTree vT = vebTree(M); 
+        for(auto i = 0; i < 1000; i++)
+        {
+            uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
+            vT.insert(x); 
+        }
+        return vT; 
+    }
+}
+
+///
+unittest
+{
+    vebTree vT = vebTree(100); 
+    vT.insert(2); 
+    assert(vT.member(2)); 
+    vebTree vT2 = vT.save(); 
+    assert(vT2.member(2)); 
+    vT2.insert(3); 
+    assert(vT2.member(3)); 
+    assert(!vT.member(3));
+}
+
+///
 unittest
 {
     assert(!__traits(compiles, new vebTree())); 
@@ -697,24 +730,9 @@ unittest
         ++n; 
         i = vT.predecessor(i); 
     }
+    
     // assert, that all members are discovered, iff when no predecessors are left
     assert(n == m); 
-}
-
-///
-version(unittest)
-{   
-    ///
-    vebTree fill(uint M)
-    {
-        vebTree vT = vebTree(M); 
-        for(auto i = 0; i < 1000; i++)
-        {
-            uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
-            vT.insert(x); 
-        }
-        return vT; 
-    }
 }
 
 ///
@@ -735,6 +753,7 @@ unittest
             assert(j != i); 
         i = j; 
     }
+    
     // assert, that all members are removed, iff when no predecessors are left. 
     assert(vT.empty); 
 }
@@ -757,6 +776,7 @@ unittest
             assert(j != i); 
         i = j; 
     } 
+
     // assert, that all members are removed, iff when no successors are left.
     assert(vT.empty); 
 }
@@ -821,13 +841,13 @@ unittest
     vebTree vT = vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr); 
+
     assert(arr.length == howMuchFilled); 
     
     vebTree vT2 = vebTree(M); 
+    
     assert(vT2.capacity == vT.capacity); 
     
-    import std.datetime; import std.conv : to;
-    import std.container;
     auto rbt = redBlackTree!uint(0); 
     rbt.clear; 
     
@@ -870,7 +890,6 @@ unittest
 ///
 unittest
 {
-    import std.algorithm; 
     uint currentSeed = 1230394; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer.
@@ -878,10 +897,8 @@ unittest
     sourceArr.length = M; 
     // generate a random array as the source for the tree
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
-    
     // constructor to test
     vebTree vT = vebTree(sourceArr); 
-    
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
     // check, that all values are filled 
@@ -891,6 +908,7 @@ unittest
         vT.remove(i); 
     }
     // check, that no other elements are present. 
+    
     assert(vT.empty); 
 }
 
@@ -904,7 +922,7 @@ unittest
     vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
-    import std.algorithm;
+    
     assert(setSymmetricDifference(vT[], sort(arr)).empty); 
 }
 
@@ -918,12 +936,10 @@ unittest
     vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
-    
     uint begin = 5; 
     uint end = 100; 
-    
-    import std.algorithm; 
     auto filterRes = sort(arr).filter!(a => a >= begin && a < end); 
+    
     assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
 
@@ -953,7 +969,6 @@ unittest
     
     assert(!vT.member(0));
     assert(!vT.member(1)); 
-    import std.algorithm; 
     assert(startsWith(vT[1], 0)); 
     assert(vT.successor(vT[1][$-1]) == vT.successor(1));
     assert(startsWith(vT[vT.successor(1)],vT.min)); 
@@ -967,8 +982,8 @@ unittest
     assert(vT[5][$-1] == vT[4][$-1]);
 }
 
+///
 unittest
 {
-    import std.range;
     assert(isBidirectionalRange!vebTree);
 }
