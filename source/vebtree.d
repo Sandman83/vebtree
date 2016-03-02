@@ -154,7 +154,7 @@ This is the class to represent a VEB tree node. As memebers it contains the univ
 well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size higherSquareRoot(u). Each
 child node has a universe size of lowerSquareRoot(u)
 */
-private class vebNode
+private struct vebNode
 {    
     immutable size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
@@ -175,7 +175,7 @@ private class vebNode
     @property bool empty() { return min.isNull; }
     
     // VEB node containing the summary node. 
-    private vebNode _summary; 
+    private vebNode* _summary; 
     // VEB cluster containing the child nodes.
     private vebNode[] _cluster;
     
@@ -192,11 +192,11 @@ private class vebNode
     {
         if(universeSize > BASE_SIZE)
         {
+            import std.algorithm; 
+            import std.range; 
             auto childUniverseSize = higherSquareRoot(universeSize); 
             _summary = new vebNode(childUniverseSize); 
-            _cluster = new vebNode[childUniverseSize]; 
-            foreach(ref vn; _cluster) 
-                vn = new vebNode(lowerSquareRoot(universeSize)); 
+            _cluster = iota(0,childUniverseSize).map!(a => vebNode(lowerSquareRoot(universeSize))).array; 
         }
     }
     
@@ -402,7 +402,7 @@ This class represents the VEB tree itself. For the sake of convinience it saves 
 wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
 the reference to the root element, as the theory tells. 
 */
-class vebTree : Iveb
+struct vebTree // : Iveb
 {
     // the root element of the tree. 
     private vebNode root; 
@@ -412,7 +412,7 @@ class vebTree : Iveb
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
     this(uint maximumElement)
     {
-        root = new vebNode(nextPowerOfTwo(maximumElement));
+        root = vebNode(nextPowerOfTwo(maximumElement));
         
         version(unittest){ _maximumElement = maximumElement; }
     }
@@ -420,23 +420,28 @@ class vebTree : Iveb
     /// another possibility is to construct a VEB tree by providing an array.
     this(uint[] range)
     {
-        import std.algorithm.comparison; 
-        import std.algorithm.iteration; 
+        import std.exception; 
+        // check, whether the range is not too long. 
+        enforce(cast(uint)range.length == range.length);
+        
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
-        size_t limit = max(range.length, reduce!(max)(range)); 
+        uint limit = cast(uint)range.length; 
+        foreach(uint i; range) limit = i > limit ? i : limit;
         
-        // without std.algorithm.iteration: 
-        // size_t limit = range.length; 
-        // foreach(uint i; range) limit = max(limit, i); 
+        // initialize the root, with the found limit 
+        root = vebNode(nextPowerOfTwo(limit));
         
-        root = new vebNode(nextPowerOfTwo(limit));
+        // set the internal maximum element for debugging
+        version(unittest) { _maximumElement = limit; }
+        
+        // add every value in the given range
         foreach(uint i; range) root.insert(i); 
     }
     
     /** 
-        this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
-        element 
+    this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
+    element 
     */
     size_t capacity(){ return root.universeSize; }
     
@@ -475,7 +480,7 @@ class vebTree : Iveb
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the class to 
     // construct a new one via an array
-    @property vebTree save(){ return new vebTree(this[]); }
+    @property vebTree save(){ return vebTree(this[]); }
     
     /**
     opSlice operator to get the underlying array. 
@@ -650,7 +655,7 @@ class vebTree : Iveb
 unittest
 {
     assert(!__traits(compiles, new vebTree())); 
-    vebTree vT = new vebTree(1000); 
+    vebTree vT = vebTree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     
@@ -685,7 +690,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
-    vebTree vT = new vebTree(M); //create the tree
+    vebTree vT = vebTree(M); //create the tree
     assert(vT.capacity == nextPowerOfTwo(M)); 
     uint m = vT.fill(1000); //(try to) fill the tree with thousend values 
     uint n; 
@@ -706,7 +711,7 @@ version(unittest)
     ///
     vebTree fill(uint M)
     {
-        vebTree vT = new vebTree(M); 
+        vebTree vT = vebTree(M); 
         for(auto i = 0; i < 1000; i++)
         {
             uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
@@ -764,7 +769,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
     vT.insert(0x00f0);
@@ -788,7 +793,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     vT.insert(0xf000); 
     assert(vT.member(0xf000)); 
     vT.insert(0x0f00); 
@@ -816,12 +821,12 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr); 
     assert(arr.length == howMuchFilled); 
     
-    vebTree vT2 = new vebTree(M); 
+    vebTree vT2 = vebTree(M); 
     assert(vT2.capacity == vT.capacity); 
     
     import std.datetime; import std.conv : to;
@@ -870,7 +875,7 @@ unittest
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     
     // constructor to test
-    vebTree vT = new vebTree(sourceArr); 
+    vebTree vT = vebTree(sourceArr); 
     
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
@@ -891,7 +896,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     import std.algorithm;
@@ -905,7 +910,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     
@@ -924,7 +929,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     assert(vT.length == vT.elementCount); 
@@ -937,7 +942,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     
