@@ -69,6 +69,7 @@ interface Iveb
 {
     //
     void insert(uint x); 
+    void insert(uint[] arr); 
     //
     void remove(uint x); 
     //
