@@ -816,6 +816,7 @@ unittest
     uint currentSeed = 1948642567; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    // last test says: inserting and removing with veb of 8.126.464 elements lasts: 19secs,217ms
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
@@ -836,6 +837,13 @@ unittest
         {
             vT2.insert(i); 
         }
+        /*
+        foreach(uint i; arr)
+        {
+            vT2.remove(i); 
+        }
+        assert(vT2.empty);
+        */
     }
     
     void fill2()
@@ -850,6 +858,7 @@ unittest
     import std.stdio; 
     writeln("howMuchFilled: ", howMuchFilled);
     auto r = benchmark!(fill1, fill2)(1); 
+    //auto r = benchmark!(fill1)(1); 
     auto f0Result = to!Duration(r[0]); 
     auto f1Result = to!Duration(r[1]); 
     writeln("VEB: ", f0Result); 
