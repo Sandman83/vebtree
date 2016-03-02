@@ -57,9 +57,7 @@ version(unittest)
     import std.container;
     import std.algorithm.setops; 
     import std.algorithm.sorting;
-    import std.algorithm.searching;     
-    
-    Random rndGenInUse; 
+    import std.algorithm.searching;
 }
 
 // defines the base universe size of a tree node. 
@@ -147,6 +145,7 @@ uint index(size_t universeSize, uint x, uint y){ return (x * lowerSquareRoot(uni
 unittest
 {
     uint currentSeed = unpredictableSeed();
+    Random rndGenInUse; 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     auto U = cast(uint)nextPowerOfTwo(M); 
@@ -613,7 +612,7 @@ struct vebTree
         private uint _maximumElement; 
         @property size_t elementCount(){ return this[].length; }
         
-        uint fill(uint m)
+        uint fill(uint m, Random rndGenInUse)
         {
             uint n; 
             for(uint i = 0; i < m; ++i)
@@ -630,7 +629,7 @@ struct vebTree
             return n; 
         }
         
-        uint fill(ref uint[] arr, uint fillPercentage = 31)
+        uint fill(ref uint[] arr, Random rndGenInUse, uint fillPercentage = 31)
         {
             uint n; 
             while(n != fillPercentage * capacity/32)
@@ -655,7 +654,7 @@ struct vebTree
 ///
 version(unittest)
 {   
-    vebTree fill(uint M)
+    vebTree fill(uint M, Random rndGenInUse)
     {
         vebTree vT = vebTree(M); 
         for(auto i = 0; i < 1000; i++)
@@ -715,13 +714,14 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 83843; // unpredictableSeed();
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
     vebTree vT = vebTree(M); //create the tree
     assert(vT.capacity == nextPowerOfTwo(M)); 
-    uint m = vT.fill(1000); //(try to) fill the tree with thousend values 
+    uint m = vT.fill(1000, rndGenInUse); //(try to) fill the tree with thousend values 
     uint n; 
     Nullable!uint i = vT.predecessor(vT.max)+1; 
     // discover the thousend (or little less) values with the predecessor method
@@ -738,10 +738,11 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 433849; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = fill(M); //fill the tree with some values 
+    vebTree vT = fill(M, rndGenInUse); //fill the tree with some values 
     Nullable!uint i = vT.max; 
     
     // remove all members beginning from the maximum
@@ -761,10 +762,11 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 438749; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = fill(M); //fill the tree with some values 
+    vebTree vT = fill(M, rndGenInUse); //fill the tree with some values 
     Nullable!uint i = vT.min-1;
     
     // remove all members beginning from the minimum
@@ -832,6 +834,7 @@ unittest
 /// 
 unittest
 {
+    Random rndGenInUse; 
     //stress test
     uint currentSeed = 1948642567; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
@@ -840,7 +843,7 @@ unittest
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
-    auto howMuchFilled = vT.fill(arr); 
+    auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
     assert(arr.length == howMuchFilled); 
     
@@ -890,6 +893,7 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 1230394; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer.
@@ -915,13 +919,14 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 2349062; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
-    vT.fill(arr, 16); 
+    vT.fill(arr, rndGenInUse, 16); 
     
     assert(setSymmetricDifference(vT[], sort(arr)).empty); 
 }
@@ -929,13 +934,14 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 2309532090; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
-    vT.fill(arr, 16); 
+    vT.fill(arr, rndGenInUse, 16); 
     uint begin = 5; 
     uint end = 100; 
     auto filterRes = sort(arr).filter!(a => a >= begin && a < end); 
@@ -946,26 +952,28 @@ unittest
 ///
 unittest
 {
+    Random rndGenInUse; 
     uint currentSeed = 1223409; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
-    vT.fill(arr, 16); 
+    vT.fill(arr, rndGenInUse, 16); 
     assert(vT.length == vT.elementCount); 
 }
 
 ///
 unittest
 {
+    Random rndGenInUse;
     uint currentSeed = 1435856534; //unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = vebTree(M); 
     uint[] arr; 
-    vT.fill(arr, 16); 
+    vT.fill(arr, rndGenInUse, 16); 
     
     assert(!vT.member(0));
     assert(!vT.member(1)); 
