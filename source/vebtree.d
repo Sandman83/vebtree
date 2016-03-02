@@ -442,6 +442,9 @@ class vebTree : Iveb
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
     void insert(uint x){ if(x < capacity) root.insert(x); }
     
+    /// this method overrides the insert method to directly use arrays
+    void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
+    
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
     void remove(uint x){ root.remove(x); }
     
