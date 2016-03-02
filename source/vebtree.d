@@ -159,8 +159,6 @@ private class vebNode
     immutable size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
     
-    version(unittest){ size_t elementCount; }
-    
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
     Nullable!uint _min; 
     @property void min(uint value){ _min = value; }
@@ -211,13 +209,7 @@ private class vebNode
     
     // this function inserts a value into a generic node. If the member exists, no insertion will be done. 
     void insert(uint x)
-    {
-        // TODO: to check, how this could be checked in a better way.
-        if(member(x)) 
-            return; 
-
-        version(unittest){ elementCount++; }
-        
+    {        
         if(this.empty)
             emptyInsert(x); 
         else 
@@ -244,13 +236,7 @@ private class vebNode
     
     // this function removes a value from the tree. If the value doesn't exist in the tree nothing will be happen. 
     void remove(uint x)
-    {
-        // TODO: to check, how this could be checked in a better way.
-        if(!member(x))
-            return; 
-        
-        version(unittest){ elementCount--; }
-        
+    {  
         // case: there is only single element
         if(min == max)
         {
@@ -406,7 +392,7 @@ class vebTree : Iveb
 {
     // the root element of the tree. 
     private vebNode root; 
-    
+    private uint _elementCount; 
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
@@ -431,7 +417,7 @@ class vebTree : Iveb
         // foreach(uint i; range) limit = max(limit, i); 
         
         root = new vebNode(nextPowerOfTwo(limit));
-        foreach(uint i; range) root.insert(i); 
+        foreach(uint i; range) insert(i); 
     }
     
     /** 
@@ -441,13 +427,27 @@ class vebTree : Iveb
     size_t capacity(){ return root.universeSize; }
     
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
-    void insert(uint x){ if(x < capacity) root.insert(x); }
+    void insert(uint x)
+    { 
+        if(x < capacity && !member(x))
+        {
+            root.insert(x); 
+            _elementCount++; 
+        }
+    }
     
     /// this method overrides the insert method to directly use arrays
     void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
     
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
-    void remove(uint x){ root.remove(x); }
+    void remove(uint x)
+    { 
+        if(member(x))
+        {
+            root.remove(x); 
+            _elementCount--; 
+        }
+    }
     
     /// this method is used to determine, whether an element is currently present in the tree
     bool member(uint x){ return root.member(x); }
@@ -471,7 +471,7 @@ class vebTree : Iveb
     @property Nullable!uint front(){ return root.min; }
     
     // this method removes the minimum element
-    void popFront(){ if(!empty) root.remove(min); }
+    void popFront(){ if(!empty) remove(min); }
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the class to 
     // construct a new one via an array
@@ -591,21 +591,21 @@ class vebTree : Iveb
     @property Nullable!uint back() { return root.max; }
     
     // this method removes the maximum element 
-    void popBack() { if(!empty) root.remove(max); }
+    void popBack() { if(!empty) remove(max); }
     
     /**
     This method returns the amount of elements currently present in the tree.
     This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    @property size_t length(){ return this[].length; }
+    @property size_t length(){ return _elementCount; }
     
     version(unittest)
     {
         // this member stores the provided input on initialization. This value could be used to hard prevent of adding
         // elements between this value and the capacity of the tree. 
         private uint _maximumElement; 
-        @property size_t elementCount(){ return root.elementCount; }
+        @property size_t elementCount(){ return this[].length; }
         
         uint fill(uint m)
         {
