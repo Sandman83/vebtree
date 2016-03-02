@@ -402,7 +402,7 @@ This class represents the VEB tree itself. For the sake of convinience it saves 
 wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
 the reference to the root element, as the theory tells. 
 */
-class vebTree : Iveb
+struct vebTree // : Iveb
 {
     // the root element of the tree. 
     private vebNode root; 
@@ -480,7 +480,7 @@ class vebTree : Iveb
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the class to 
     // construct a new one via an array
-    @property vebTree save(){ return new vebTree(this[]); }
+    @property vebTree save(){ return vebTree(this[]); }
     
     /**
     opSlice operator to get the underlying array. 
@@ -655,7 +655,7 @@ class vebTree : Iveb
 unittest
 {
     assert(!__traits(compiles, new vebTree())); 
-    vebTree vT = new vebTree(1000); 
+    vebTree vT = vebTree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     
@@ -690,7 +690,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
-    vebTree vT = new vebTree(M); //create the tree
+    vebTree vT = vebTree(M); //create the tree
     assert(vT.capacity == nextPowerOfTwo(M)); 
     uint m = vT.fill(1000); //(try to) fill the tree with thousend values 
     uint n; 
@@ -711,7 +711,7 @@ version(unittest)
     ///
     vebTree fill(uint M)
     {
-        vebTree vT = new vebTree(M); 
+        vebTree vT = vebTree(M); 
         for(auto i = 0; i < 1000; i++)
         {
             uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
@@ -769,7 +769,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
     vT.insert(0x00f0);
@@ -793,7 +793,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     vT.insert(0xf000); 
     assert(vT.member(0xf000)); 
     vT.insert(0x0f00); 
@@ -821,12 +821,12 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr); 
     assert(arr.length == howMuchFilled); 
     
-    vebTree vT2 = new vebTree(M); 
+    vebTree vT2 = vebTree(M); 
     assert(vT2.capacity == vT.capacity); 
     
     import std.datetime; import std.conv : to;
@@ -875,7 +875,7 @@ unittest
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     
     // constructor to test
-    vebTree vT = new vebTree(sourceArr); 
+    vebTree vT = vebTree(sourceArr); 
     
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
@@ -896,7 +896,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     import std.algorithm;
@@ -910,7 +910,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     
@@ -929,7 +929,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     assert(vT.length == vT.elementCount); 
@@ -942,7 +942,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    vebTree vT = vebTree(M); 
     uint[] arr; 
     vT.fill(arr, 16); 
     
