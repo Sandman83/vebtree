@@ -162,7 +162,7 @@ child node has a universe size of lowerSquareRoot(u)
 */
 private struct vebNode
 {    
-    immutable size_t _universeSize;
+    size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
     
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
