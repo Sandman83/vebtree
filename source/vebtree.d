@@ -154,7 +154,7 @@ This is the class to represent a VEB tree node. As memebers it contains the univ
 well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size higherSquareRoot(u). Each
 child node has a universe size of lowerSquareRoot(u)
 */
-private class vebNode
+private struct vebNode
 {    
     immutable size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
@@ -175,7 +175,7 @@ private class vebNode
     @property bool empty() { return min.isNull; }
     
     // VEB node containing the summary node. 
-    private vebNode _summary; 
+    private vebNode* _summary; 
     // VEB cluster containing the child nodes.
     private vebNode[] _cluster;
     
@@ -192,11 +192,11 @@ private class vebNode
     {
         if(universeSize > BASE_SIZE)
         {
+            import std.algorithm; 
+            import std.range; 
             auto childUniverseSize = higherSquareRoot(universeSize); 
             _summary = new vebNode(childUniverseSize); 
-            _cluster = new vebNode[childUniverseSize]; 
-            foreach(ref vn; _cluster) 
-                vn = new vebNode(lowerSquareRoot(universeSize)); 
+            _cluster = iota(0,childUniverseSize).map!(a => vebNode(lowerSquareRoot(universeSize))).array; 
         }
     }
     
@@ -412,7 +412,7 @@ class vebTree : Iveb
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
     this(uint maximumElement)
     {
-        root = new vebNode(nextPowerOfTwo(maximumElement));
+        root = vebNode(nextPowerOfTwo(maximumElement));
         
         version(unittest){ _maximumElement = maximumElement; }
     }
@@ -420,23 +420,28 @@ class vebTree : Iveb
     /// another possibility is to construct a VEB tree by providing an array.
     this(uint[] range)
     {
-        import std.algorithm.comparison; 
-        import std.algorithm.iteration; 
+        import std.exception; 
+        // check, whether the range is not too long. 
+        enforce(cast(uint)range.length == range.length);
+        
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
-        size_t limit = max(range.length, reduce!(max)(range)); 
+        uint limit = cast(uint)range.length; 
+        foreach(uint i; range) limit = i > limit ? i : limit;
         
-        // without std.algorithm.iteration: 
-        // size_t limit = range.length; 
-        // foreach(uint i; range) limit = max(limit, i); 
+        // initialize the root, with the found limit 
+        root = vebNode(nextPowerOfTwo(limit));
         
-        root = new vebNode(nextPowerOfTwo(limit));
+        // set the internal maximum element for debugging
+        version(unittest) { _maximumElement = limit; }
+        
+        // add every value in the given range
         foreach(uint i; range) root.insert(i); 
     }
     
     /** 
-        this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
-        element 
+    this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
+    element 
     */
     size_t capacity(){ return root.universeSize; }
     
