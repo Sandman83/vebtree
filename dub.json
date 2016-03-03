@@ -4,6 +4,7 @@
 	"copyright": "Copyright © 2016, Alexander Orlov",
 	"authors": ["Alexander Orlov"],
     "license": "MIT",
+    "version": "~develop", 
     "targetPath": "./bin",
     "targetType": "library",
 	"dependencies": {
