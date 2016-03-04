@@ -64,7 +64,7 @@ version(unittest)
 ubyte BASE_SIZE = 2; 
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
-size_t nextPowerOfTwo(size_t value) { return 1 << (bsr(value) + 1); }
+uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
 ///
 unittest
 {
@@ -77,7 +77,7 @@ This function returns the upper square root of the given input as integer. It is
 the VEB tree to calculate the number of children of a given layer. The upper square root is defined by 2^{\lceil(\lg
 u)/2\rceil}
 */
-uint higherSquareRoot(size_t value){return 1 << (value.lowerSqrtShift + (value > (1 << value.bsr) || value.bsr & 1));}
+uint higherSquareRoot(uint value){return 1 << (value.lowerSqrtShift + (value > (1 << value.bsr) || value.bsr & 1));}
 ///
 unittest
 {
@@ -93,7 +93,7 @@ This function returns the floored log2 value of the input. This is done by count
 bit position and dividing this value by two. This method is needed both by the higher and lower square root
 calculation. 
 */
-uint lowerSqrtShift(size_t value) { return bsr(value)/2; }
+uint lowerSqrtShift(uint value) { return bsr(value)/2; }
 ///
 unittest
 {
@@ -104,7 +104,7 @@ unittest
 This function returns the lower square root of the given input as integer. It is needed by the indexing functions
 high(x), low(x) and index(x,y) of elements in the tree. The lower square root is defined by 2^{\lfloor(\lg u)/2\rfloor}
 */
-uint lowerSquareRoot(size_t value) { return 1 << lowerSqrtShift(value); }
+uint lowerSquareRoot(uint value) { return 1 << lowerSqrtShift(value); }
 ///
 unittest
 {
@@ -118,7 +118,7 @@ unittest
 This is an index function defined as \lfloor x/lowerSquareRoot(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. 
 */
-uint high(uint value, size_t universeSize) { return value/lowerSquareRoot(universeSize); }
+uint high(uint value, uint universeSize) { return value/lowerSquareRoot(universeSize); }
 ///
 unittest
 {
@@ -129,7 +129,7 @@ unittest
 This is an index function defined as fmod(value, lowerSquareRoot(universeSize)). It is needed to find the appropriate
 value inside a cluster. 
 */
-uint low(uint value, size_t universeSize){ return value & (lowerSquareRoot(universeSize) - 1); }
+uint low(uint value, uint universeSize){ return value & (lowerSquareRoot(universeSize) - 1); }
 ///
 unittest
 {
@@ -140,7 +140,7 @@ unittest
 This is an index function to retain the searched value. It is defined as x * lowerSquareRoot(u) + y. Beyond this, the
 relation holds: x = index(high(x), low(x))
 */
-uint index(size_t universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
+uint index(uint universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
 ///
 unittest
 {
@@ -148,7 +148,7 @@ unittest
     Random rndGenInUse; 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
-    auto U = cast(uint)nextPowerOfTwo(M); 
+    auto U = nextPowerOfTwo(M); 
     uint x = uniform(0U, U, rndGenInUse); 
     uint y = uniform(0U, U, rndGenInUse); 
     
@@ -162,8 +162,8 @@ child node has a universe size of lowerSquareRoot(u)
 */
 private struct vebNode
 {
-    size_t _universeSize;
-    @property size_t universeSize(){ return _universeSize; }
+    uint _universeSize;
+    @property uint universeSize(){ return _universeSize; }
     
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
     Nullable!uint _min; 
@@ -185,14 +185,14 @@ private struct vebNode
     
     
     @disable this(); // initializing without providing a universe size is prohibited. 
-    this(size_t universeSize) // ditto
+    this(uint universeSize) // ditto
     {
         this._universeSize = universeSize; 
         initializeChildren(universeSize); 
     }
     
     // after constructing the node, construct every of its children. 
-    private void initializeChildren(size_t universeSize)
+    private void initializeChildren(uint universeSize)
     {
         if(universeSize > BASE_SIZE)
         {
@@ -406,6 +406,7 @@ class vebTree
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
     this(uint maximumElement)
     {
+        enforce(maximumElement < (1 << 31)); 
         root = vebNode(nextPowerOfTwo(maximumElement));
         
         version(unittest){ _maximumElement = maximumElement; }
@@ -415,13 +416,13 @@ class vebTree
     this(uint[] range)
     {
         // check, whether the range is not too long. 
-        enforce(cast(uint)range.length == range.length);
+        enforce(range.length < (1 << 31));
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         uint limit = cast(uint)range.length; 
         foreach(uint i; range) limit = comp.max(limit,i); 
-        
+        enforce(limit < (1 << 31)); 
         // initialize the root, with the found limit 
         root = vebNode(nextPowerOfTwo(limit));
         version(unittest){ _maximumElement = limit; }
@@ -433,7 +434,7 @@ class vebTree
         this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
         element 
     */
-    size_t capacity(){ return root.universeSize; }
+    uint capacity(){ return root.universeSize; }
     
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
     void insert(uint x)
@@ -551,43 +552,58 @@ class vebTree
     successor(i)), when the given index is not set. Or, if the given index is set, [member(i), successor(i)]. If an 
     index out of bounds is given, an empty array is returned. The tree must not be empty to use this function. 
     */
-    uint[] opIndex(uint i)
+    auto opIndex(uint i)
     {        
         enforce(!this.empty);
-
-        uint[] retArr;         
+        
+        auto retVal = iota(0U, 0U);
         if(i < this.capacity)
+            retVal = iota(aMin(i), aMax(i));
+        
+        return retVal; 
+    }
+    
+    // find the maximum for the slice for the opIndex operation
+    private uint aMax(uint i)
+    {
+        uint retVal = this.capacity;
+        if(i < this.min)
         {
-            uint absoluteMin; 
-            uint absoluteMax; 
-            
-            if(i < this.min)
+            retVal = this.min; 
+        }
+        else
+        {
+            if(i >= this.max)
             {
-                
-                absoluteMin = 0; 
-                absoluteMax = this.min; 
+                retVal = this.capacity; 
             }
             else
             {
-                if(i >= this.max)
-                {
-                    absoluteMax = cast(uint)(capacity - 1); 
-                    absoluteMin = this.max; 
-                }
-                else
-                {
-                    absoluteMax = successor(i); 
-                    if(this.member(i))
-                        absoluteMin = i; 
-                    else
-                        absoluteMin = predecessor(i); 
-                }
+                retVal = successor(i); 
             }
-            retArr = iota(absoluteMin, absoluteMax).array;    
-            if(i >= this.max)
-                retArr ~= absoluteMax; 
         }
-        return retArr; 
+        return retVal; 
+    }
+    
+    // find the minimum for the slice for the opIndex operation
+    private uint aMin(uint i)
+    {
+        uint retVal; 
+        if(i >= this.min)
+        {
+            if(i >= this.max)
+            {
+                retVal = this.max; 
+            }
+            else
+            {
+                if(this.member(i))
+                    retVal = i; 
+                else
+                    retVal = predecessor(i); 
+            }
+        }
+        return retVal; 
     }
     
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
@@ -603,7 +619,7 @@ class vebTree
     This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    @property size_t length(){ return _elementCount; }
+    @property uint length(){ return _elementCount; }
     
     version(unittest)
     {
@@ -840,7 +856,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: inserting and removing with veb of 8.126.464 elements lasts: 19secs,217ms
-    uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
+    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = new vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr, rndGenInUse); 
@@ -887,7 +903,7 @@ unittest
     writeln("VEB: ", f0Result); 
     writeln("rbt: ", f1Result); 
     assert(f0Result < f1Result); 
-    */
+    //*/
 }
 
 ///
@@ -981,7 +997,7 @@ unittest
     assert(vT.successor(vT[1][$-1]) == vT.successor(1));
     assert(startsWith(vT[vT.successor(1)],vT.min)); 
     assert(!vT.member(65535)); 
-    assert(vT[65535] == [65534, 65535]); 
+    assert(vT[65535].array == [65534, 65535]); 
     assert(vT.member(4)); 
     assert(startsWith(vT[4],4)); 
     assert(!vT.member(vT[4][$-1])); 
@@ -1000,11 +1016,28 @@ unittest
 unittest
 {
     vebTree vT = new vebTree(15);
-    vT.insert(0); 
+    vT.insert(2); 
     vT.insert(5); 
     vT.insert(10); 
-    assert(vT[] == [0, 5, 10]); 
-    assert(vT[6] == [5, 6, 7, 8, 9]); 
-    assert(vT[11] == [10, 11, 12, 13, 14, 15]); 
-    assert(vT[-1] == []); 
+    assert(vT[] == [2, 5, 10]); 
+
+    assert(vT[6].array == [5, 6, 7, 8, 9]); 
+    assert(vT[11].array == [10, 11, 12, 13, 14, 15]); 
+    assert(vT[-1].array == []); 
+    assert(vT[18].array == []); 
+    assert(vT[1].array == [0, 1]);  
+    assert(vT[15].array == [10, 11, 12, 13, 14, 15]); 
+    assert(vT[16].array == []); 
+}
+
+///
+unittest
+{
+    vebTree vT = new vebTree(15); 
+    vT.insert(2); 
+    auto testrange = vT[3]; 
+    assert(testrange.array == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]); 
+    vT.insert(6); 
+    testrange = vT[3];
+    assert(testrange.array == [2, 3, 4, 5]); 
 }
