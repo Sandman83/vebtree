@@ -1000,11 +1000,28 @@ unittest
 unittest
 {
     vebTree vT = new vebTree(15);
-    vT.insert(0); 
+    vT.insert(2); 
     vT.insert(5); 
     vT.insert(10); 
-    assert(vT[] == [0, 5, 10]); 
+    assert(vT[] == [2, 5, 10]); 
+
     assert(vT[6] == [5, 6, 7, 8, 9]); 
     assert(vT[11] == [10, 11, 12, 13, 14, 15]); 
     assert(vT[-1] == []); 
+    assert(vT[18] == []); 
+    assert(vT[1] == [0, 1]);  
+    assert(vT[15] == [10, 11, 12, 13, 14, 15]); 
+    assert(vT[16] == []); 
+}
+
+///
+unittest
+{
+    vebTree vT = new vebTree(15); 
+    vT.insert(2); 
+    
+    assert(vT[3] == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]); 
+    
+    vT.insert(6); 
+    assert(vT[3] == [2, 3, 4, 5]); 
 }
