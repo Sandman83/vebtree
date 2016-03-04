@@ -161,7 +161,7 @@ well as a link to a summary node and a cluster, which is a range of VEB tree nod
 child node has a universe size of lowerSquareRoot(u)
 */
 private struct vebNode
-{    
+{
     size_t _universeSize;
     @property size_t universeSize(){ return _universeSize; }
     
@@ -393,7 +393,7 @@ wished maximum element. However at the point of development it is only used for 
 the reference to the root element, as the theory tells. The tree implements not only the documented interface of a 
 van VEB tree, but is also a bidirectional range. It supports two slice operations and a non-trivial opIndex operator. 
 */
-struct vebTree
+class vebTree
 {
     // the root element of the tree. 
     private vebNode root; 
@@ -484,7 +484,7 @@ struct vebTree
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
     // to construct a new one via an array
-    @property vebTree save() { return vebTree(this[]); }
+    @property vebTree save() { return new vebTree(this[]); }
     
     /**
     opSlice operator to get the underlying array. 
@@ -656,7 +656,7 @@ version(unittest)
 {   
     vebTree fill(uint M, Random rndGenInUse)
     {
-        vebTree vT = vebTree(M); 
+        vebTree vT = new vebTree(M); 
         for(auto i = 0; i < 1000; i++)
         {
             uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
@@ -669,7 +669,7 @@ version(unittest)
 ///
 unittest
 {
-    vebTree vT = vebTree(100); 
+    vebTree vT = new vebTree(100); 
     vT.insert(2); 
     assert(vT.member(2)); 
     vebTree vT2 = vT.save(); 
@@ -683,7 +683,7 @@ unittest
 unittest
 {
     assert(!__traits(compiles, new vebTree())); 
-    vebTree vT = vebTree(1000); 
+    vebTree vT = new vebTree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     
@@ -719,7 +719,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
-    vebTree vT = vebTree(M); //create the tree
+    vebTree vT = new vebTree(M); //create the tree
     assert(vT.capacity == nextPowerOfTwo(M)); 
     uint m = vT.fill(1000, rndGenInUse); //(try to) fill the tree with thousend values 
     uint n; 
@@ -787,7 +787,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
     vT.insert(0x00f0);
@@ -811,7 +811,7 @@ unittest
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     vT.insert(0xf000); 
     assert(vT.member(0xf000)); 
     vT.insert(0x0f00); 
@@ -841,13 +841,13 @@ unittest
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: inserting and removing with veb of 8.126.464 elements lasts: 19secs,217ms
     uint M = uniform(0U, 1 << 14, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
     assert(arr.length == howMuchFilled); 
     
-    vebTree vT2 = vebTree(M); 
+    vebTree vT2 = new vebTree(M); 
     
     assert(vT2.capacity == vT.capacity); 
     
@@ -902,7 +902,7 @@ unittest
     // generate a random array as the source for the tree
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     // constructor to test
-    vebTree vT = vebTree(sourceArr); 
+    vebTree vT = new vebTree(sourceArr); 
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
     // check, that all values are filled 
@@ -924,7 +924,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     uint[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     
@@ -939,7 +939,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     uint[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     uint begin = 5; 
@@ -957,7 +957,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     uint[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     assert(vT.length == vT.elementCount); 
@@ -971,7 +971,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = vebTree(M); 
+    vebTree vT = new vebTree(M); 
     uint[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     
@@ -994,4 +994,17 @@ unittest
 unittest
 {
     assert(isBidirectionalRange!vebTree);
+}
+
+///
+unittest
+{
+    vebTree vT = new vebTree(15);
+    vT.insert(0); 
+    vT.insert(5); 
+    vT.insert(10); 
+    assert(vT[] == [0, 5, 10]); 
+    assert(vT[6] == [5, 6, 7, 8, 9]); 
+    assert(vT[11] == [10, 11, 12, 13, 14, 15]); 
+    assert(vT[-1] == []); 
 }
