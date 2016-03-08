@@ -501,7 +501,7 @@ class vebTree
             retArray ~= min;
             if(min != max)
             {
-                retArray.reserve(capacity);
+                retArray.reserve(max - min + 1);
                 while(retArray[$-1] != max)
                     retArray ~= successor(retArray[$-1]); 
             }
@@ -534,7 +534,7 @@ class vebTree
                 {
                     uint limit = comp.min(end, this.max); 
                     
-                    retArray.reserve(limit-begin); 
+                    retArray.reserve(limit - begin + 1); 
                     uint i = successor(retArray[$-1]); 
                     while(i < limit)
                     {
