@@ -62,6 +62,7 @@ version(unittest)
 
 // defines the base universe size of a tree node. 
 ubyte BASE_SIZE = 2; 
+uint ELEMENT_LIMIT = 1 << 31; 
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
 uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
@@ -406,7 +407,7 @@ class vebTree
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
     this(uint maximumElement)
     {
-        enforce(maximumElement < (1 << 31)); 
+        enforce(maximumElement < ELEMENT_LIMIT); 
         root = vebNode(nextPowerOfTwo(maximumElement));
         
         version(unittest){ _maximumElement = maximumElement; }
@@ -416,13 +417,13 @@ class vebTree
     this(uint[] range)
     {
         // check, whether the range is not too long. 
-        enforce(range.length < (1 << 31));
+        enforce(range.length < ELEMENT_LIMIT);
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         uint limit = cast(uint)range.length; 
         foreach(uint i; range) limit = comp.max(limit,i); 
-        enforce(limit < (1 << 31)); 
+        enforce(limit < ELEMENT_LIMIT); 
         // initialize the root, with the found limit 
         root = vebNode(nextPowerOfTwo(limit));
         version(unittest){ _maximumElement = limit; }
@@ -573,11 +574,7 @@ class vebTree
         }
         else
         {
-            if(i >= this.max)
-            {
-                retVal = this.capacity; 
-            }
-            else
+            if(i < this.max)
             {
                 retVal = successor(i); 
             }
@@ -900,8 +897,8 @@ unittest
     //auto r = benchmark!(fill1)(1); 
     auto f0Result = to!Duration(r[0]); 
     auto f1Result = to!Duration(r[1]); 
-    writeln("VEB: ", f0Result); 
-    writeln("rbt: ", f1Result); 
+    writeln("VEB: ", f0Result); //10ms
+    writeln("rbt: ", f1Result); //40sec
     assert(f0Result < f1Result); 
     //*/
 }
@@ -1040,4 +1037,50 @@ unittest
     vT.insert(6); 
     testrange = vT[3];
     assert(testrange.array == [2, 3, 4, 5]); 
+}
+
+///
+unittest
+{
+    //another stress test
+    Random rndGenInUse;
+    auto currentSeed = 11351568; //unpredictableSeed(); 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    
+    void fill16(){ vebTree vT = new vebTree(1 << 16); }
+    void fill17(){ vebTree vT = new vebTree(1 << 17); }
+    void fill18(){ vebTree vT = new vebTree(1 << 18); }
+    void fill19(){ vebTree vT = new vebTree(1 << 19); }    
+    void fill20(){ vebTree vT = new vebTree(1 << 20); }
+    void fill21(){ vebTree vT = new vebTree(1 << 21); }
+    void fill22(){ vebTree vT = new vebTree(1 << 22); }
+    void fill23(){ vebTree vT = new vebTree(1 << 23); }
+    void fill24(){ vebTree vT = new vebTree(1 << 24); }
+    void fill25(){ vebTree vT = new vebTree(1 << 25); }
+    
+    /*
+    import std.stdio; 
+    auto r = benchmark!(fill16, fill17, fill18, fill19, fill20, fill21, fill22, fill23, fill24, fill25)(1); 
+    //auto r = benchmark!(fill1)(1); 
+    auto f16Result = to!Duration(r[0]); 
+    auto f17Result = to!Duration(r[1]); 
+    auto f18Result = to!Duration(r[2]); 
+    auto f19Result = to!Duration(r[3]); 
+    auto f20Result = to!Duration(r[4]);
+    auto f21Result = to!Duration(r[5]);
+    auto f22Result = to!Duration(r[6]);
+    auto f23Result = to!Duration(r[7]);
+    auto f24Result = to!Duration(r[8]);
+    auto f25Result = to!Duration(r[9]);
+    writeln("VEB with M of ", 1 << 16, ": ", f16Result); 
+    writeln("VEB with M of ", 1 << 17, ": ", f17Result);
+    writeln("VEB with M of ", 1 << 18, ": ", f18Result);
+    writeln("VEB with M of ", 1 << 19, ": ", f19Result);
+    writeln("VEB with M of ", 1 << 20, ": ", f20Result);
+    writeln("VEB with M of ", 1 << 21, ": ", f21Result);
+    writeln("VEB with M of ", 1 << 22, ": ", f22Result);
+    writeln("VEB with M of ", 1 << 23, ": ", f23Result);
+    writeln("VEB with M of ", 1 << 24, ": ", f24Result);
+    writeln("VEB with M of ", 1 << 25, ": ", f25Result); 
+    //*/
 }
