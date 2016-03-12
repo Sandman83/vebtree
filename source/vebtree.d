@@ -62,7 +62,6 @@ version(unittest)
 
 // defines the base universe size of a tree node. 
 ubyte BASE_SIZE = 2; 
-uint ELEMENT_LIMIT = 1 << 31; 
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
 uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
@@ -203,9 +202,11 @@ private struct vebNode
         }
     }
     
-    // this function inserts a value into an empty node. The difference between empty and non empty insert is, that the
-    // algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max
-    // members. 
+    /*
+    this function inserts a value into an empty node. The difference between empty and non empty insert is, that the
+    algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max
+    members. 
+    */
     private void emptyInsert(uint x)
     {
         min = x; 
@@ -279,8 +280,10 @@ private struct vebNode
         }
     }
     
-    // this function returns the successor of the given value, even, if the value is not present in the tree. 
-    // If the value is maximum or greater then the maximum of the tree null is returned. 
+    /*
+    this function returns the successor of the given value, even, if the value is not present in the tree. 
+    If the value is maximum or greater then the maximum of the tree null is returned. 
+    */
     Nullable!uint successor(uint x)
     {
         Nullable!uint result; 
@@ -319,8 +322,10 @@ private struct vebNode
         return result; 
     }
     
-    // this function returns the predecessor of the given value, even, if the value is not present in the tree. 
-    // if the value is the minimum or smaller then the minimum of the tree null is returned.
+    /*
+    this function returns the predecessor of the given value, even, if the value is not present in the tree. 
+    if the value is the minimum or smaller then the minimum of the tree null is returned.
+    */
     Nullable!uint predecessor(uint x)
     {
         Nullable!uint result; 
@@ -400,40 +405,39 @@ class vebTree
     private vebNode root; 
     // this member is updated on every insertion and deletion to give the current element count on O(1)
     private uint _elementCount; 
+    // this member stores the initialization size, as it would be lost forever after initialization otherwise
+    immutable uint expectedSize; 
     
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
     
     /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
-    this(uint maximumElement)
+    this(uint expectedSize)
     {
-        enforce(maximumElement < ELEMENT_LIMIT); 
-        root = vebNode(nextPowerOfTwo(maximumElement));
-        
-        version(unittest){ _maximumElement = maximumElement; }
+        root = vebNode(nextPowerOfTwo(expectedSize - 1));
+        this.expectedSize = expectedSize; 
     }
     
     /// another possibility is to construct a VEB tree by providing an array.
     this(uint[] range)
     {
-        // check, whether the range is not too long. 
-        enforce(range.length < ELEMENT_LIMIT);
+        // check, whether the range is not too long. I. e. expressable with an uint. 
+        enforce(range.length <= uint.max);
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         uint limit = cast(uint)range.length; 
         foreach(uint i; range) limit = comp.max(limit,i); 
-        enforce(limit < ELEMENT_LIMIT); 
-        // initialize the root, with the found limit 
-        root = vebNode(nextPowerOfTwo(limit));
-        version(unittest){ _maximumElement = limit; }
+       
+        enforce(limit < uint.max);  
+        this(limit + 1); 
         
         foreach(uint i; range) insert(i); 
     }
     
     /** 
-        this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
-        element 
+    this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
+    element 
     */
     uint capacity(){ return root.universeSize; }
     
@@ -622,7 +626,6 @@ class vebTree
     {
         // this member stores the provided input on initialization. This value could be used to hard prevent of adding
         // elements between this value and the capacity of the tree. 
-        private uint _maximumElement; 
         @property size_t elementCount(){ return this[].length; }
         
         uint fill(uint m, Random rndGenInUse)
@@ -630,7 +633,7 @@ class vebTree
             uint n; 
             for(uint i = 0; i < m; ++i)
             {
-                uint x = uniform(0, _maximumElement+1, rndGenInUse);
+                uint x = uniform(0, expectedSize, rndGenInUse);
                 // the check for membership is done to add only on inserting to the counter, not just 
                 // because visiting the the loop
                 if(!member(x))
@@ -672,7 +675,7 @@ version(unittest)
         vebTree vT = new vebTree(M); 
         for(auto i = 0; i < 1000; i++)
         {
-            uint x = uniform(0U, vT._maximumElement, rndGenInUse); 
+            uint x = uniform(0U, vT.expectedSize, rndGenInUse); 
             vT.insert(x); 
         }
         return vT; 
@@ -925,7 +928,6 @@ unittest
         vT.remove(i); 
     }
     // check, that no other elements are present. 
-    
     assert(vT.empty); 
 }
 
