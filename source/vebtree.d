@@ -148,7 +148,7 @@ unittest
     Random rndGenInUse; 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U,1 << 14, rndGenInUse); //set universe size to some integer. 
-    auto U = nextPowerOfTwo(M); 
+    uint U = nextPowerOfTwo(M); 
     uint x = uniform(0U, U, rndGenInUse); 
     uint y = uniform(0U, U, rndGenInUse); 
     
@@ -405,7 +405,7 @@ class vebTree
     private vebNode root; 
     // this member is updated on every insertion and deletion to give the current element count on O(1)
     private uint _elementCount; 
-    // this member stores the initialization size, as it would be lost forever after initialization otherwise
+    // this member stores the initialization size, as it would be lost forever after initialization, otherwise
     immutable uint expectedSize; 
     
     /// default constructor of a VEB tree is disabled. 
@@ -422,16 +422,17 @@ class vebTree
     this(uint[] range)
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
-        enforce(range.length <= uint.max);
+        enforce(bsr(range.length) < bsr(uint.max));
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         uint limit = cast(uint)range.length; 
-        foreach(uint i; range) limit = comp.max(limit,i); 
-       
-        enforce(limit < uint.max);  
-        this(limit + 1); 
         
+        foreach(uint i; range) limit = comp.max(limit,i); 
+
+        enforce(bsr(limit) < bsr(uint.max), "you are crazy, dude!"); 
+        this(limit + 1);
+
         foreach(uint i; range) insert(i); 
     }
     
@@ -571,7 +572,8 @@ class vebTree
     // find the maximum for the slice for the opIndex operation
     private uint aMax(uint i)
     {
-        uint retVal = this.capacity;
+        uint retVal = (this.max < expectedSize && i < expectedSize) ? expectedSize : this.capacity;
+        
         if(i < this.min)
         {
             retVal = this.min; 
@@ -626,7 +628,7 @@ class vebTree
     {
         // this member stores the provided input on initialization. This value could be used to hard prevent of adding
         // elements between this value and the capacity of the tree. 
-        @property size_t elementCount(){ return this[].length; }
+        @property auto elementCount(){ return this[].length; }
         
         uint fill(uint m, Random rndGenInUse)
         {
@@ -960,7 +962,6 @@ unittest
     uint begin = 5; 
     uint end = 100; 
     auto filterRes = sort(arr).filter!(a => a >= begin && a < end); 
-    
     assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
 
@@ -1014,14 +1015,13 @@ unittest
 ///
 unittest
 {
-    vebTree vT = new vebTree(15);
+    vebTree vT = new vebTree(14);
     vT.insert(2); 
     vT.insert(5); 
     vT.insert(10); 
     assert(vT[] == [2, 5, 10]); 
-
     assert(vT[6].array == [5, 6, 7, 8, 9]); 
-    assert(vT[11].array == [10, 11, 12, 13, 14, 15]); 
+    assert(vT[11].array == [10, 11, 12, 13]); 
     assert(vT[-1].array == []); 
     assert(vT[18].array == []); 
     assert(vT[1].array == [0, 1]);  
@@ -1035,7 +1035,7 @@ unittest
     vebTree vT = new vebTree(15); 
     vT.insert(2); 
     auto testrange = vT[3]; 
-    assert(testrange.array == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]); 
+    assert(testrange.array == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]); 
     vT.insert(6); 
     testrange = vT[3];
     assert(testrange.array == [2, 3, 4, 5]); 
@@ -1085,4 +1085,13 @@ unittest
     writeln("VEB with M of ", 1 << 24, ": ", f24Result);
     writeln("VEB with M of ", 1 << 25, ": ", f25Result); 
     //*/
+}
+
+///
+unittest
+{
+    /*
+    uint[] arr = [1, 2, 8, 2147483647]; 
+    auto vT = new vebTree(arr)); 
+    */
 }
