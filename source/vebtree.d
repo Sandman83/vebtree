@@ -525,26 +525,27 @@ class vebTree
         uint[] retArray;
          
         if(!max.isNull)
-            uint limit = comp.min(end,this.max); 
-        
-        if(begin < limit)
         {
-            if(this.member(begin))
-                retArray ~= begin; 
-            else
+            uint limit = comp.min(end,this.max); 
+            if(begin < limit)
             {
-                auto i = successor(begin);
-                if(!i.isNull && i < end)
-                    retArray ~= i; 
-            }
-            if(min != max)
-            {                    
-                retArray.reserve(limit - begin + 1); 
-                auto i = successor(retArray[$-1]); 
-                while(!i.isNull && i < limit)
+                if(this.member(begin))
+                    retArray ~= begin; 
+                else
                 {
-                    retArray ~= i; 
-                    i = successor(retArray[$-1]); 
+                    auto i = successor(begin);
+                    if(!i.isNull && i < end)
+                        retArray ~= i; 
+                }
+                if(min != max)
+                {                    
+                    retArray.reserve(limit - begin + 1); 
+                    auto i = successor(retArray[$-1]); 
+                    while(!i.isNull && i < limit)
+                    {
+                        retArray ~= i; 
+                        i = successor(retArray[$-1]); 
+                    }
                 }
             }
         }
