@@ -531,8 +531,8 @@ class vebTree
                     retArray ~= begin; 
                 else
                 {
-                    uint i = successor(begin);
-                    if(i < end)
+                    auto i = successor(begin);
+                    if(!i.isNull && i < end)
                         retArray ~= i; 
                 }
                 if(min != max)
