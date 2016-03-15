@@ -522,30 +522,29 @@ class vebTree
     */
     uint[] opSlice(uint begin, uint end)
     {
-        uint[] retArray; 
-        if(begin < end && begin < max)
+        uint[] retArray;
+         
+        if(!max.isNull)
+            uint limit = comp.min(end,this.max); 
+        
+        if(begin < limit)
         {
-            if(!min.isNull)
+            if(this.member(begin))
+                retArray ~= begin; 
+            else
             {
-                if(this.member(begin))
-                    retArray ~= begin; 
-                else
+                auto i = successor(begin);
+                if(!i.isNull && i < end)
+                    retArray ~= i; 
+            }
+            if(min != max)
+            {                    
+                retArray.reserve(limit - begin + 1); 
+                auto i = successor(retArray[$-1]); 
+                while(!i.isNull && i < limit)
                 {
-                    auto i = successor(begin);
-                    if(!i.isNull && i < end)
-                        retArray ~= i; 
-                }
-                if(min != max)
-                {
-                    uint limit = comp.min(end, this.max); 
-                    
-                    retArray.reserve(limit - begin + 1); 
-                    uint i = successor(retArray[$-1]); 
-                    while(i < limit)
-                    {
-                        retArray ~= i; 
-                        i = successor(retArray[$-1]); 
-                    }
+                    retArray ~= i; 
+                    i = successor(retArray[$-1]); 
                 }
             }
         }
