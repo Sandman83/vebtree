@@ -64,7 +64,7 @@ version(unittest)
 ubyte BASE_SIZE = 2; 
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
-uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
+@nogc uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
 ///
 unittest
 {
@@ -77,7 +77,10 @@ This function returns the upper square root of the given input as integer. It is
 the VEB tree to calculate the number of children of a given layer. The upper square root is defined by 2^{\lceil(\lg
 u)/2\rceil}
 */
-uint higherSquareRoot(uint value){return 1 << (value.lowerSqrtShift + (value > (1 << value.bsr) || value.bsr & 1));}
+@nogc uint higherSquareRoot(uint value)
+{
+    return 1 << (value.lowerSqrtShift + (value > (1 << value.bsr) || value.bsr & 1));
+}
 ///
 unittest
 {
@@ -93,7 +96,7 @@ This function returns the floored log2 value of the input. This is done by count
 bit position and dividing this value by two. This method is needed both by the higher and lower square root
 calculation. 
 */
-uint lowerSqrtShift(uint value) { return bsr(value)/2; }
+@nogc uint lowerSqrtShift(uint value) { return bsr(value)/2; }
 ///
 unittest
 {
@@ -104,7 +107,7 @@ unittest
 This function returns the lower square root of the given input as integer. It is needed by the indexing functions
 high(x), low(x) and index(x,y) of elements in the tree. The lower square root is defined by 2^{\lfloor(\lg u)/2\rfloor}
 */
-uint lowerSquareRoot(uint value) { return 1 << lowerSqrtShift(value); }
+@nogc uint lowerSquareRoot(uint value) { return 1 << lowerSqrtShift(value); }
 ///
 unittest
 {
@@ -118,7 +121,7 @@ unittest
 This is an index function defined as \lfloor x/lowerSquareRoot(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. 
 */
-uint high(uint value, uint universeSize) { return value/lowerSquareRoot(universeSize); }
+@nogc uint high(uint value, uint universeSize) { return value/lowerSquareRoot(universeSize); }
 ///
 unittest
 {
@@ -129,7 +132,7 @@ unittest
 This is an index function defined as fmod(value, lowerSquareRoot(universeSize)). It is needed to find the appropriate
 value inside a cluster. 
 */
-uint low(uint value, uint universeSize){ return value & (lowerSquareRoot(universeSize) - 1); }
+@nogc uint low(uint value, uint universeSize){ return value & (lowerSquareRoot(universeSize) - 1); }
 ///
 unittest
 {
@@ -140,7 +143,7 @@ unittest
 This is an index function to retain the searched value. It is defined as x * lowerSquareRoot(u) + y. Beyond this, the
 relation holds: x = index(high(x), low(x))
 */
-uint index(uint universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
+@nogc uint index(uint universeSize, uint x, uint y){ return (x * lowerSquareRoot(universeSize) + y); }
 ///
 unittest
 {
@@ -163,20 +166,20 @@ child node has a universe size of lowerSquareRoot(u)
 private struct vebNode
 {
     uint _universeSize;
-    @property uint universeSize(){ return _universeSize; }
+    @nogc @property uint universeSize(){ return _universeSize; }
     
     // min value is contained in the node as a separate value, this value can't be found in child nodes. 
     Nullable!uint _min; 
-    @property void min(uint value){ _min = value; }
-    @property Nullable!uint min() { return _min; }
+    @nogc @property void min(uint value){ _min = value; }
+    @nogc @property Nullable!uint min() { return _min; }
     
     // max value is contained in the node as a separate value, this can be found in child nodes.
     Nullable!uint _max; 
-    @property void max(uint value){ _max = value; }
-    @property Nullable!uint max(){ return _max; }
+    @nogc @property void max(uint value){ _max = value; }
+    @nogc @property Nullable!uint max(){ return _max; }
     
     // the node is empty, iff neither min nor max is set. 
-    @property bool empty() { return min.isNull; }
+    @nogc @property bool empty() { return min.isNull; }
     
     // VEB node containing the summary node. 
     private vebNode* _summary; 
@@ -207,14 +210,14 @@ private struct vebNode
     algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max
     members. 
     */
-    private void emptyInsert(uint x)
+    @nogc private void emptyInsert(uint x)
     {
         min = x; 
         max = x; 
     }
     
     // this function inserts a value into a generic node. If the member exists, no insertion will be done. 
-    void insert(uint x)
+    @nogc void insert(uint x)
     {        
         if(this.empty)
             emptyInsert(x); 
@@ -241,7 +244,7 @@ private struct vebNode
     }
     
     // this function removes a value from the tree. If the value doesn't exist in the tree nothing will be happen. 
-    void remove(uint x)
+    @nogc void remove(uint x)
     {  
         // case: there is only single element
         if(min == max)
@@ -284,7 +287,7 @@ private struct vebNode
     this function returns the successor of the given value, even, if the value is not present in the tree. 
     If the value is maximum or greater then the maximum of the tree null is returned. 
     */
-    Nullable!uint successor(uint x)
+    @nogc Nullable!uint successor(uint x)
     {
         Nullable!uint result; 
         
@@ -326,7 +329,7 @@ private struct vebNode
     this function returns the predecessor of the given value, even, if the value is not present in the tree. 
     if the value is the minimum or smaller then the minimum of the tree null is returned.
     */
-    Nullable!uint predecessor(uint x)
+    @nogc Nullable!uint predecessor(uint x)
     {
         Nullable!uint result; 
         if(BASE_SIZE == universeSize)
@@ -366,7 +369,7 @@ private struct vebNode
     }
     
     // This function returns whether the input key is currently member of the tree. 
-    bool member(uint x)
+    @nogc bool member(uint x)
     {
         bool returnVal;
        
@@ -384,13 +387,13 @@ private struct vebNode
     }
     
     // this function is an concretization of the module wide indexing function 
-    uint index(uint x, uint y){ return .index(universeSize, x, y); }
+    @nogc uint index(uint x, uint y){ return .index(universeSize, x, y); }
 
     // this function is an concretization of the module wide indexing function     
-    uint high(uint x){ return .high(x, universeSize); }
+    @nogc uint high(uint x){ return .high(x, universeSize); }
 
     // this function is an concretization of the module wide indexing function     
-    uint low(uint x){ return .low(x, universeSize); }
+    @nogc uint low(uint x){ return .low(x, universeSize); }
 }
 
 /**
@@ -422,6 +425,7 @@ class vebTree
     this(uint[] range)
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
+        /* cancel enforcement due to @nogc*/
         enforce(bsr(range.length) < bsr(uint.max));
         
         // first, we have to determine the size of the tree. 
@@ -430,6 +434,7 @@ class vebTree
         
         foreach(uint i; range) limit = comp.max(limit,i); 
 
+        /* cancel enforcement due to @nogc*/
         enforce(bsr(limit) < bsr(uint.max), "you are crazy, dude!"); 
         this(limit + 1);
 
@@ -440,10 +445,10 @@ class vebTree
     this method returns the capacity of the tree. It is equal to the next power of two with regard to the maximum
     element 
     */
-    uint capacity(){ return root.universeSize; }
+    @nogc uint capacity(){ return root.universeSize; }
     
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
-    void insert(uint x)
+    @nogc void insert(uint x)
     { 
         if(x < capacity && !member(x))
         {
@@ -453,10 +458,10 @@ class vebTree
     }
     
     /// this method overrides the insert method to directly use arrays
-    void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
+    @nogc void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
     
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
-    void remove(uint x)
+    @nogc void remove(uint x)
     { 
         if(member(x))
         {
@@ -466,28 +471,28 @@ class vebTree
     }
     
     /// this method is used to determine, whether an element is currently present in the tree
-    bool member(uint x){ return root.member(x); }
+    @nogc bool member(uint x){ return root.member(x); }
     
     /// this method is used to determine the minimum of the tree
-    @property Nullable!uint min(){ return front; }
+    @nogc @property Nullable!uint min(){ return front; }
 
     /// this method is used to determine the maximum of the tree    
-    @property Nullable!uint max(){ return back; }
+    @nogc @property Nullable!uint max(){ return back; }
     
     /// this method retrieves the successor of the given input.
-    Nullable!uint successor(uint x){ return root.successor(x); }
+    @nogc Nullable!uint successor(uint x){ return root.successor(x); }
     
     /// this method retrieves the predecessor of the given input. 
-    Nullable!uint predecessor(uint x){ return root.predecessor(x); }
+    @nogc Nullable!uint predecessor(uint x){ return root.predecessor(x); }
     
     // this method is used to determine, whether the tree is currently containing an element. 
-    @property bool empty(){ return root.empty; }
+    @nogc @property bool empty(){ return root.empty; }
     
     // this method returns the minimium. 
-    @property Nullable!uint front(){ return root.min; }
+    @nogc @property Nullable!uint front(){ return root.min; }
     
     // this method removes the minimum element
-    void popFront(){ if(!empty) remove(min); }
+    @nogc void popFront(){ if(!empty) remove(min); }
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
     // to construct a new one via an array
@@ -498,7 +503,8 @@ class vebTree
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    uint[] opSlice()
+    
+    private uint[] opSlice()
     {
         uint[] retArray; 
         if(!min.isNull)
@@ -513,14 +519,15 @@ class vebTree
         }
         return retArray; 
     }
-    
+
     /**
     opSlice operator to get the underlying array between given bounds. 
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to min(n, m), where n is the number of elements between bounds and m are the number of present 
     elements in the tree. 
     */
-    uint[] opSlice(uint begin, uint end)
+    /*
+    @nogc uint[] opSlice(uint begin, uint end)
     {
         uint[] retArray;
          
@@ -551,16 +558,17 @@ class vebTree
         }
         return retArray; 
     }
-    
+    */
     /**
     This is a nontrivial opIndex operator on indizies of the tree. Given an index a range (!) is returned, which is, 
     either the range of elements in the tree build up by [predecessor(i) .. successor(i)] (i. e. excluding the 
     successor(i)), when the given index is not set. Or, if the given index is set, [member(i), successor(i)]. If an 
     index out of bounds is given, an empty array is returned. The tree must not be empty to use this function. 
     */
-    auto opIndex(uint i)
+    @nogc auto opIndex(uint i)
     {        
-        enforce(!this.empty);
+        /* cancel enforcement due to @nogc*/
+        //enforce(!this.empty);
         
         auto retVal = iota(0U, 0U);
         if(i < this.capacity)
@@ -570,7 +578,7 @@ class vebTree
     }
     
     // find the maximum for the slice for the opIndex operation
-    private uint aMax(uint i)
+    @nogc private uint aMax(uint i)
     {
         uint retVal = (this.max < expectedSize && i < expectedSize) ? expectedSize : this.capacity;
         
@@ -589,7 +597,7 @@ class vebTree
     }
     
     // find the minimum for the slice for the opIndex operation
-    private uint aMin(uint i)
+    @nogc private uint aMin(uint i)
     {
         uint retVal; 
         if(i >= this.min)
@@ -612,17 +620,17 @@ class vebTree
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
     // bidirectional range also needs
-    @property Nullable!uint back() { return root.max; }
+    @nogc @property Nullable!uint back() { return root.max; }
     
     // this method removes the maximum element 
-    void popBack() { if(!empty) remove(max); }
+    @nogc void popBack() { if(!empty) remove(max); }
     
     /**
     This method returns the amount of elements currently present in the tree.
     This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    @property uint length(){ return _elementCount; }
+    @nogc @property uint length(){ return _elementCount; }
     
     version(unittest)
     {
