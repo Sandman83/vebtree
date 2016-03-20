@@ -474,10 +474,10 @@ class vebTree
     @nogc bool member(uint x){ return root.member(x); }
     
     /// this method is used to determine the minimum of the tree
-    @nogc @property Nullable!uint min(){ return front; }
+    @nogc @property Nullable!uint min(){ return root.min; }
 
     /// this method is used to determine the maximum of the tree    
-    @nogc @property Nullable!uint max(){ return back; }
+    @nogc @property Nullable!uint max(){ return root.max; }
     
     /// this method retrieves the successor of the given input.
     @nogc Nullable!uint successor(uint x){ return root.successor(x); }
@@ -489,7 +489,15 @@ class vebTree
     @nogc @property bool empty(){ return root.empty; }
     
     // this method returns the minimium. 
-    @nogc @property Nullable!uint front(){ return root.min; }
+    @nogc @property uint front()
+    in
+    {
+        assert(!min.isNull); 
+    }
+    body
+    { 
+        return this.min; 
+    }
     
     // this method removes the minimum element
     @nogc void popFront(){ if(!empty) remove(min); }
@@ -620,7 +628,15 @@ class vebTree
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
     // bidirectional range also needs
-    @nogc @property Nullable!uint back() { return root.max; }
+    @nogc @property uint back()
+    in
+    {
+        assert(!max.isNull);
+    }
+    body
+    {
+        return this.max;
+    }
     
     // this method removes the maximum element 
     @nogc void popBack() { if(!empty) remove(max); }
@@ -969,8 +985,9 @@ unittest
     vT.fill(arr, rndGenInUse, 16); 
     uint begin = 5; 
     uint end = 100; 
-    auto filterRes = sort(arr).filter!(a => a >= begin && a < end); 
-    assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
+    auto filterRes = sort(arr).filter!(a => a >= begin && a < end);
+    /* test commented out due to disabling opSlice operation */
+    //assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
 
 ///
