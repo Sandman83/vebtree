@@ -512,7 +512,7 @@ class vebTree
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
     
-    private uint[] opSlice()
+    uint[] opSlice()
     {
         uint[] retArray; 
         if(!min.isNull)
