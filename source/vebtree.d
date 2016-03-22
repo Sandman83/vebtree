@@ -422,6 +422,10 @@ class vebTree
     }
     
     /// another possibility is to construct a VEB tree by providing an array.
+    /*
+        TODO: replace this by InputRange!uint as only foreach is needed. Then, rewrite the opSlice method in terms of 
+        Fiber --> Generator. 
+    */
     this(uint[] range)
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
@@ -448,26 +452,32 @@ class vebTree
     @nogc uint capacity(){ return root.universeSize; }
     
     /// this method is used to add an element to the tree. duplicate values will be ignored. 
-    @nogc void insert(uint x)
+    @nogc bool insert(uint x)
     { 
+        bool retVal; 
         if(x < capacity && !member(x))
         {
             root.insert(x); 
             _elementCount++; 
+            retVal = true; 
         }
+        return retVal; 
     }
     
     /// this method overrides the insert method to directly use arrays
     @nogc void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
     
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
-    @nogc void remove(uint x)
+    @nogc bool remove(uint x)
     { 
+        bool retVal; 
         if(member(x))
         {
             root.remove(x); 
             _elementCount--; 
+            retVal = true; 
         }
+        return retVal; 
     }
     
     /// this method is used to determine, whether an element is currently present in the tree
@@ -702,7 +712,7 @@ version(unittest)
         for(auto i = 0; i < 1000; i++)
         {
             uint x = uniform(0U, vT.expectedSize, rndGenInUse); 
-            vT.insert(x); 
+            auto result = vT.insert(x); 
         }
         return vT; 
     }
@@ -712,11 +722,13 @@ version(unittest)
 unittest
 {
     vebTree vT = new vebTree(100); 
-    vT.insert(2); 
+    auto result = vT.insert(2); 
+    assert(result); 
     assert(vT.member(2)); 
     vebTree vT2 = vT.save(); 
     assert(vT2.member(2)); 
-    vT2.insert(3); 
+    result = vT2.insert(3); 
+    assert(result); 
     assert(vT2.member(3)); 
     assert(!vT.member(3));
 }
@@ -729,27 +741,36 @@ unittest
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     
-    vT.insert(2); 
+    auto result = vT.insert(2); 
+    assert(result); 
     vT.insert(5); 
+    assert(result);
     assert(!vT.member(8)); 
-    vT.insert(88);
-    vT.insert(8); 
+    result = vT.insert(88);
+    assert(result); 
+    result = vT.insert(8); 
+    assert(result); 
     assert(vT.predecessor(75) == 8); 
     assert(vT.successor(6) == 8); 
     assert(!vT.member(1029)); 
-    vT.insert(1029); 
+    result = vT.insert(1029); 
+    assert(!result); // as 1029 > 1024
     assert(!vT.member(1029)); 
 
 
     assert(!vT.member(865)); 
-    vT.insert(865); 
+    result = vT.insert(865); 
+    assert(result); 
     assert(vT.member(865)); 
-    vT.insert(865); 
+    result = vT.insert(865); 
+    assert(!result); 
     assert(vT.member(865)); 
     assert(!vT.member(866)); 
-    vT.remove(866); 
+    result = vT.remove(866); 
+    assert(!result); 
     assert(vT.member(865)); 
-    vT.remove(865); 
+    result = vT.remove(865); 
+    assert(result); 
     assert(!vT.member(865)); 
 }
 
@@ -788,9 +809,11 @@ unittest
     Nullable!uint i = vT.max; 
     
     // remove all members beginning from the maximum
+    bool result; 
     while(!i.isNull)
     {
-        vT.remove(i); 
+        result = vT.remove(i); 
+        assert(result); 
         auto j = vT.predecessor(i); 
         if(!j.isNull)
             assert(j != i); 
@@ -809,12 +832,16 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
     vebTree vT = fill(M, rndGenInUse); //fill the tree with some values 
-    Nullable!uint i = vT.min-1;
+    Nullable!uint i = vT.min;
     
     // remove all members beginning from the minimum
+    bool result; 
     while(!i.isNull)
     {
-        vT.remove(i); 
+        import std.conv; 
+        
+        result = vT.remove(i); 
+        assert(result); 
         auto j = vT.successor(i); 
         if(!j.isNull)
             assert(j != i); 
@@ -839,13 +866,17 @@ unittest
     vT.insert(0xf000); 
     assert(vT.predecessor(0xf000) == 0x0f00);
     
-    vT.remove(0xf000); 
+    auto result = vT.remove(0xf000); 
+    assert(result); 
     assert(vT.predecessor(0xf000) == 0x0f00);
-    vT.remove(0x0f00); 
+    result = vT.remove(0x0f00); 
+    assert(result); 
     assert(vT.predecessor(0x0f00) == 0x00f0); 
-    vT.remove(0x00f0); 
+    result = vT.remove(0x00f0); 
+    assert(result); 
     assert(vT.predecessor(0x00f0) == 0x000f); 
-    vT.remove(0x000f); 
+    result = vT.remove(0x000f); 
+    assert(result); 
     assert(vT.predecessor(0x000f).isNull);
 }
 
@@ -863,13 +894,17 @@ unittest
     vT.insert(0x000f); 
     assert(vT.member(0x000f)); 
     
-    vT.remove(0xf000); 
+    auto result = vT.remove(0xf000); 
+    assert(result); 
     assert(!vT.member(0xf000)); 
-    vT.remove(0x0f00); 
+    result = vT.remove(0x0f00); 
+    assert(result); 
     assert(!vT.member(0x0f00)); 
-    vT.remove(0x00f0); 
+    result = vT.remove(0x00f0); 
+    assert(result); 
     assert(!vT.member(0x00f0)); 
-    vT.remove(0x000f); 
+    result = vT.remove(0x000f); 
+    assert(result); 
     assert(!vT.member(0x000f)); 
 }
 
@@ -948,10 +983,12 @@ unittest
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
     // check, that all values are filled 
+    bool result; 
     foreach(uint i; uniqueArr)
     {
         assert(vT.member(i)); 
-        vT.remove(i); 
+        result = vT.remove(i); 
+        assert(result); 
     }
     // check, that no other elements are present. 
     assert(vT.empty); 
@@ -1041,9 +1078,12 @@ unittest
 unittest
 {
     vebTree vT = new vebTree(14);
-    vT.insert(2); 
-    vT.insert(5); 
-    vT.insert(10); 
+    auto result = vT.insert(2); 
+    assert(result); 
+    result = vT.insert(5); 
+    assert(result);
+    result = vT.insert(10); 
+    assert(result);
     assert(vT[] == [2, 5, 10]); 
     assert(vT[6].array == [5, 6, 7, 8, 9]); 
     assert(vT[11].array == [10, 11, 12, 13]); 
@@ -1058,10 +1098,12 @@ unittest
 unittest
 {
     vebTree vT = new vebTree(15); 
-    vT.insert(2); 
+    auto result = vT.insert(2); 
+    assert(result); 
     auto testrange = vT[3]; 
     assert(testrange.array == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]); 
-    vT.insert(6); 
+    result = vT.insert(6); 
+    assert(result); 
     testrange = vT[3];
     assert(testrange.array == [2, 3, 4, 5]); 
 }
@@ -1119,4 +1161,11 @@ unittest
     uint[] arr = [1, 2, 8, 2147483647]; 
     auto vT = new vebTree(arr)); 
     */
+}
+
+///
+unittest
+{
+    vebTree aux; 
+    assert(aux is null); 
 }
