@@ -423,8 +423,8 @@ class vebTree
     
     /// another possibility is to construct a VEB tree by providing an array.
     /*
-        TODO: replace this by InputRange!uint as only foreach is needed. Then, rewrite the opSlice method in terms of 
-        Fiber --> Generator. 
+        TODO: replace this by templated method with constraints as only foreach is needed.
+        Then, rewrite the opSlice method in terms of Fiber --> Generator. 
     */
     this(uint[] range)
     {
@@ -465,6 +465,7 @@ class vebTree
     }
     
     /// this method overrides the insert method to directly use arrays
+    //TODO: see comment of this(uint[])
     @nogc void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
     
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
@@ -521,7 +522,7 @@ class vebTree
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    
+        //TODO: see comment of this(uint[])
     private uint[] opSlice()
     {
         uint[] retArray; 
