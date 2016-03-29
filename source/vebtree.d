@@ -343,6 +343,11 @@ private struct vebNode
                 result = max; 
             else
             {
+                /*
+                    import logger = std.experimental.logger; 
+                    logger.log(high(x));
+                    //TODO: here is a bug (?)
+                */
                 auto minlow = _cluster[high(x)].min; 
                 if(!minlow.isNull && low(x) > minlow)
                 {
