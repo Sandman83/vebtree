@@ -527,7 +527,7 @@ class vebTree
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-        //TODO: see comment of this(uint[])
+    //TODO: see comment of this(uint[])
     private uint[] opSlice()
     {
         uint[] retArray; 
@@ -583,63 +583,6 @@ class vebTree
         return retArray; 
     }
     */
-    /**
-    This is a nontrivial opIndex operator on indizies of the tree. Given an index a range (!) is returned, which is, 
-    either the range of elements in the tree build up by [predecessor(i) .. successor(i)] (i. e. excluding the 
-    successor(i)), when the given index is not set. Or, if the given index is set, [member(i), successor(i)]. If an 
-    index out of bounds is given, an empty array is returned. The tree must not be empty to use this function. 
-    */
-    @nogc auto opIndex(uint i)
-    {        
-        /* cancel enforcement due to @nogc*/
-        //enforce(!this.empty);
-        
-        auto retVal = iota(0U, 0U);
-        if(i < this.capacity)
-            retVal = iota(aMin(i), aMax(i));
-        
-        return retVal; 
-    }
-    
-    // find the maximum for the slice for the opIndex operation
-    @nogc private uint aMax(uint i)
-    {
-        uint retVal = (this.max < expectedSize && i < expectedSize) ? expectedSize : this.capacity;
-        
-        if(i < this.min)
-        {
-            retVal = this.min; 
-        }
-        else
-        {
-            if(i < this.max)
-            {
-                retVal = successor(i); 
-            }
-        }
-        return retVal; 
-    }
-    
-    // find the minimum for the slice for the opIndex operation
-    @nogc private uint aMin(uint i)
-    {
-        uint retVal; 
-        if(i >= this.min)
-        {
-            if(i >= this.max)
-            {
-                retVal = this.max; 
-            }
-            else
-            {
-                if(this.member(i))
-                    retVal = i; 
-                else
-                    retVal = predecessor(i); 
-            }
-        }
-        return retVal; 
-    }
     
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
@@ -1048,6 +991,7 @@ unittest
 }
 
 ///
+/* unit test canceled, due removing the opIndex operator. 
 unittest
 {
     Random rndGenInUse;
@@ -1073,6 +1017,7 @@ unittest
     assert(startsWith(vT[5],4)); 
     assert(vT[5][$-1] == vT[4][$-1]);
 }
+*/
 
 ///
 unittest
@@ -1091,6 +1036,7 @@ unittest
     result = vT.insert(10); 
     assert(result);
     assert(vT[] == [2, 5, 10]); 
+    /*
     assert(vT[6].array == [5, 6, 7, 8, 9]); 
     assert(vT[11].array == [10, 11, 12, 13]); 
     assert(vT[-1].array == []); 
@@ -1098,9 +1044,11 @@ unittest
     assert(vT[1].array == [0, 1]);  
     assert(vT[15].array == [10, 11, 12, 13, 14, 15]); 
     assert(vT[16].array == []); 
+    */
 }
 
 ///
+/* unit test canceled, due removing the opIndex operator. 
 unittest
 {
     vebTree vT = new vebTree(15); 
@@ -1113,7 +1061,7 @@ unittest
     testrange = vT[3];
     assert(testrange.array == [2, 3, 4, 5]); 
 }
-
+*/
 ///
 unittest
 {
