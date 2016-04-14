@@ -15,7 +15,11 @@ this restriction is not only a restriction of the amount of elements but also on
 */
 
 // TODO: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
-// TODO: provide functionality to contain associated data with the keys, i. e. exercise 20.3.2 from Cormen
+
+/**
+The library is supposed to contain a tree on keys only, for the data could be managed outside. Then, there could be a 
+simple method to combine the keys and the data together. 
+*/
 
 /**
 In this version, the maximum size of the universe possible is 2^32. With this restriction all unsigned integers could
@@ -48,6 +52,7 @@ import comp = std.algorithm.comparison;
 import std.algorithm.iteration; 
 import std.exception; 
 import std.range; 
+import std.traits; 
 
 version(unittest) 
 { 
@@ -61,7 +66,7 @@ version(unittest)
 }
 
 // defines the base universe size of a tree node. 
-ubyte BASE_SIZE = 2; 
+ubyte BASE_SIZE = 2; //uint.sizeof * size_t.sizeof; 
 
 // Convinience function to return the ceiling to the next power of two number of the given input. 
 @nogc uint nextPowerOfTwo(uint value) { return 1 << (bsr(value) + 1); }
@@ -343,11 +348,6 @@ private struct vebNode
                 result = max; 
             else
             {
-                /*
-                    import logger = std.experimental.logger; 
-                    logger.log(high(x));
-                    //TODO: here is a bug (?)
-                */
                 auto minlow = _cluster[high(x)].min; 
                 if(!minlow.isNull && low(x) > minlow)
                 {
@@ -427,12 +427,9 @@ class vebTree
     }
     
     /// another possibility is to construct a VEB tree by providing an array.
-    /*
-        TODO: replace this by templated method with constraints as only foreach is needed.
-        Then, rewrite the opSlice method in terms of Fiber --> Generator. 
-    */
-    this(uint[] range)
-    {
+
+    this(R)(R range) if(isIterable!R)
+    {        
         // check, whether the range is not too long. I. e. expressable with an uint. 
         /* cancel enforcement due to @nogc*/
         enforce(bsr(range.length) < bsr(uint.max));
@@ -470,8 +467,7 @@ class vebTree
     }
     
     /// this method overrides the insert method to directly use arrays
-    //TODO: see comment of this(uint[])
-    @nogc void insert(uint[] arr){ foreach(uint i; arr) insert(i); }
+    @nogc void insert(R)(R arr) if(isIterable!R){ foreach(uint i; arr) insert(i); }
     
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
     @nogc bool remove(uint x)
@@ -527,7 +523,7 @@ class vebTree
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    //TODO: see comment of this(uint[])
+    //TODO: opSlice operator should be implemented as generator, to avoid memory reallocations.
     private uint[] opSlice()
     {
         uint[] retArray; 
@@ -543,46 +539,6 @@ class vebTree
         }
         return retArray; 
     }
-
-    /**
-    opSlice operator to get the underlying array between given bounds. 
-    This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
-    proportional to min(n, m), where n is the number of elements between bounds and m are the number of present 
-    elements in the tree. 
-    */
-    /*
-    @nogc uint[] opSlice(uint begin, uint end)
-    {
-        uint[] retArray;
-         
-        if(!max.isNull)
-        {
-            uint limit = comp.min(end,this.max); 
-            if(begin < limit)
-            {
-                if(this.member(begin))
-                    retArray ~= begin; 
-                else
-                {
-                    auto i = successor(begin);
-                    if(!i.isNull && i < end)
-                        retArray ~= i; 
-                }
-                if(min != max)
-                {                    
-                    retArray.reserve(limit - begin + 1); 
-                    auto i = successor(retArray[$-1]); 
-                    while(!i.isNull && i < limit)
-                    {
-                        retArray ~= i; 
-                        i = successor(retArray[$-1]); 
-                    }
-                }
-            }
-        }
-        return retArray; 
-    }
-    */
     
     // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
     
@@ -904,6 +860,9 @@ unittest
     }
     
     /*
+        this part is for speed test
+    */
+    /*
     import std.stdio; 
     writeln("howMuchFilled: ", howMuchFilled);
     auto r = benchmark!(fill1, fill2)(1); 
@@ -991,35 +950,6 @@ unittest
 }
 
 ///
-/* unit test canceled, due removing the opIndex operator. 
-unittest
-{
-    Random rndGenInUse;
-    uint currentSeed = 1435856534; //unpredictableSeed(); 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
-    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
-    uint[] arr; 
-    vT.fill(arr, rndGenInUse, 16); 
-    
-    assert(!vT.member(0));
-    assert(!vT.member(1)); 
-    assert(startsWith(vT[1], 0)); 
-    assert(vT.successor(vT[1][$-1]) == vT.successor(1));
-    assert(startsWith(vT[vT.successor(1)],vT.min)); 
-    assert(!vT.member(65535)); 
-    assert(vT[65535].array == [65534, 65535]); 
-    assert(vT.member(4)); 
-    assert(startsWith(vT[4],4)); 
-    assert(!vT.member(vT[4][$-1])); 
-    assert(!vT.member(5)); 
-    assert(startsWith(vT[5],4)); 
-    assert(vT[5][$-1] == vT[4][$-1]);
-}
-*/
-
-///
 unittest
 {
     assert(isBidirectionalRange!vebTree);
@@ -1036,32 +966,8 @@ unittest
     result = vT.insert(10); 
     assert(result);
     assert(vT[] == [2, 5, 10]); 
-    /*
-    assert(vT[6].array == [5, 6, 7, 8, 9]); 
-    assert(vT[11].array == [10, 11, 12, 13]); 
-    assert(vT[-1].array == []); 
-    assert(vT[18].array == []); 
-    assert(vT[1].array == [0, 1]);  
-    assert(vT[15].array == [10, 11, 12, 13, 14, 15]); 
-    assert(vT[16].array == []); 
-    */
 }
 
-///
-/* unit test canceled, due removing the opIndex operator. 
-unittest
-{
-    vebTree vT = new vebTree(15); 
-    auto result = vT.insert(2); 
-    assert(result); 
-    auto testrange = vT[3]; 
-    assert(testrange.array == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]); 
-    result = vT.insert(6); 
-    assert(result); 
-    testrange = vT[3];
-    assert(testrange.array == [2, 3, 4, 5]); 
-}
-*/
 ///
 unittest
 {
@@ -1081,6 +987,9 @@ unittest
     void fill24(){ vebTree vT = new vebTree(1 << 24); }
     void fill25(){ vebTree vT = new vebTree(1 << 25); }
     
+    /*
+        This part is for speed test. 
+    */
     /*
     import std.stdio; 
     auto r = benchmark!(fill16, fill17, fill18, fill19, fill20, fill21, fill22, fill23, fill24, fill25)(1); 
@@ -1109,9 +1018,12 @@ unittest
 }
 
 ///
+/*
+    This unittest is for check of adding of big numbers
+*/
 unittest
 {
-    /*
+    /* 
     uint[] arr = [1, 2, 8, 2147483647]; 
     auto vT = new vebTree(arr)); 
     */
