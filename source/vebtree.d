@@ -822,7 +822,9 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: inserting and removing with veb of 8.126.464 elements lasts: 19secs,217ms
-    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    // something about 8*10^6 takes about 10 sec
+    // 32.5 * 10^6 takes 44,8 sec
+    uint M = uniform(0U, 1 << 15, rndGenInUse); // set universe size to some integer. 
     vebTree vT = new vebTree(M); 
     uint[] arr; 
     auto howMuchFilled = vT.fill(arr, rndGenInUse); 
