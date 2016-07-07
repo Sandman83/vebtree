@@ -151,7 +151,18 @@ unittest
     auto hSR = hSR(M); 
 
     assert((hSR & (hSR - 1)) == 0); 
-    if(hSR < uint.max) assert(hSR * hSR > M);
+    if(hSR < uint.max)
+    {
+        import std.math; 
+        import std.conv; 
+        /*
+        writeln("M: ", M); 
+        writeln("hSR: ", hSR);
+        writeln("hSR²: ", hSR * hSR); 
+        writeln("sqrt M: ", sqrt(to!float(M)));
+        */
+        assert(hSR >= sqrt(to!float(M)));
+    } 
     const auto check = powersOfTwo.until(hSR).array; 
     assert((check[$-1]) * (check[$-1]) < M); 
 }
@@ -178,7 +189,11 @@ unittest
     const auto check = powersOfTwo.find(lSR).array; 
     //writeln("check[1]: ", check[1]); 
     //writeln("lSR: ", lSR); 
-    if(lSR < uint.max/2) assert((check[1]) * (check[1]) > M); 
+    //writeln("check[1]: ", check[1]);
+    //writeln("M: ", M);
+    import std.math; 
+    import std.conv; 
+    if(lSR < size_t.max/2) assert((check[1]) > sqrt(to!float(M))); 
 }
 
 /*
@@ -231,7 +246,8 @@ unittest
     const size_t currentSeed = unpredictableSeed();
     write("UT: index.            "); writeln("seed: ", currentSeed); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(0U,uint.max, rndGenInUse); //set universe size to some integer. 
+    const size_t M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    //writeln("M: ", M);
     const size_t U = nPof2(M); 
     const size_t x = uniform(0U, U, rndGenInUse); 
     
@@ -882,7 +898,8 @@ class vebTree
             assert(vT.capacity == (size_t(1) << (bsr(uS) + 1))); 
         
         assert(vT.expectedSize == uS); 
-
+        //writeln("uS: ", uS); 
+        //writeln("vT.expectedSize: ", vT.expectedSize); 
         const auto uS1 = uniform(1U << size_t(1),testedSize, rndGenInUse);
         const auto uSsmall = uniform(1U << size_t(1),baseSize, rndGenInUse);
         vebTree vT1 = new vebTree(uS1); 
@@ -895,20 +912,24 @@ class vebTree
         {
             assert(vT1.root._val == 1);
             assert(vT1.root.ptrArr != null); 
+            //writeln("vT1.root._val: ", vT1.root._val);
             //check every child for consistency. 
             // the size of a node is higher square root & the summary node. 
             
             // capacity is tested elsewhere. 
             // hSR is also tested elsewhere
             const auto childsAmount_l1 = hSR(vT1.capacity) + 1; 
-            const auto childsAmount_l2 = hSR(lSR(vT1.capacity)) + 1; 
+            const auto childsAmount_l2 = hSR(lSR(vT1.capacity)) > baseSize ? hSR(lSR(vT1.capacity)) + 1 : 0; 
             
             // the tree is just created, assert all children are nullified
             for(size_t i; i < childsAmount_l1; ++i)
             {
+                //writeln("i: ", i); 
                 assert(vT1.root.ptrArr[i].isNull);
+                //writeln("ii: ", i); 
                 if(childsAmount_l1 > baseSize + 1)
                 {
+                    //writeln("iii: ", i); 
                     /*
                     writeln("hey!"); 
                     writeln("childsAmount_l1: ", childsAmount_l1); 
@@ -917,7 +938,11 @@ class vebTree
                     writeln(); 
                     */
                     for(size_t j; j < childsAmount_l2; ++j)
+                    {
+                        //writeln("iiii: ", i); 
+                        //writeln("j: ", j); 
                         assert(vT1.root.ptrArr[i].ptrArr[j].isNull);
+                    }
                 }
             }
         }
