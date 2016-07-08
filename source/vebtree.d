@@ -11,8 +11,8 @@
     given an arbitrary size at the initialization. As long as the usage is intended to contains keys, as in the
     current version, this restriction is not only a restriction of the amount of elements but also on the contained
     element values. 
-    For optimization purposes, the size limit is uint.max + 1, wherein the size of the uint type is taken into account.
-    So the largest element which can be stored is 4.294.967.295 with the size of the tree of 4.294.967.296. 
+    For optimization purposes, the size limit is size_t.max/2 + 1. The tree was tested on 64- and 32-bit arch. 
+    So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
 */
 
 // (optional) todo: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
@@ -44,34 +44,36 @@
 
 /**
     As an important optimization a bottom out technique is used to compactify the tree to the level of nodes, where bit
-    operations become possible. As a side effect, the optimization now relies on the 64-bit architecture. Nevertheless,
-    as the uint and ulong values are bit-fixed, the tree works on a 32-bit architecture as well. Beyond this, tagged
-    pointer are used, so the alignment of pointers is also a presumption. 
+    operations become possible. As a side effect, the optimization now relies on the underlying architecture. This leads
+    to the fact, that the maximum of elements which can be stored is 
+    2^16 on a 32-bit architecture and 
+    2^32 on a 64-bit architecture. 
+    This was intentionally chosen for two reasons: 
+    i) to keep the size of a single node also depending from the underlying architecture. 
+    ii) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
+    emulating bigger entities. 
 */
 
 module vebtree; 
 
-import std.stdio; 
-
-import std.typecons; /// used for Nullable 
-import core.bitop; 
-import std.algorithm.iteration; 
-import std.exception; 
-import std.range; 
+import std.typecons; // used for Nullable 
+import core.bitop; // used for bit operations 
+import std.bitmanip; // used for bitfields 
 import std.traits; 
-import std.bitmanip; 
 
-version(unittest) 
+version(unittest)
 { 
+    import std.stdio; 
+    import std.range; 
+    import std.algorithm; // iteration, setops, sorting and searching is used in unittest
     import std.random; 
     import std.datetime; 
     import std.conv : to;
-    import std.container;
-    import std.algorithm.setops; 
-    import std.algorithm.sorting;
-    import std.algorithm.searching;
+    import std.container; // red black tree may be used in unittests for comparison.
     size_t[] powersOfTwo = iota(0, 8 * size_t.sizeof).map!(a => size_t(1) << a).array; 
     Random rndGenInUse; 
+
+
     void bin(ulong n)
     {
         import std.stdio : writeln; 
@@ -82,6 +84,57 @@ version(unittest)
     }
     enum testedSize = 1 << 3 * size_t.sizeof;
     enum allowedArraySize = 1 << (2 * size_t.sizeof + size_t.sizeof/2); // choosed arbitrary, to avoid seg. faults
+
+    //
+    auto elementCount(VEBtree vT){ return vT[].length; }
+
+    auto fill(VEBtree vT, size_t m, Random rndGenInUse)
+    {
+        size_t n; 
+        for(size_t i = 0; i < m; ++i)
+        {
+            auto x = uniform(0, vT.expectedSize, rndGenInUse);
+            // the check for membership is done to add only on inserting to the counter, not just 
+            // because visiting the the loop
+            if(!vT.member(x))
+            {
+                vT.insert(x); 
+                ++n; 
+            }
+        }
+        return n; 
+    }
+        
+    auto fill(VEBtree vT, ref size_t[] arr, Random rndGenInUse, size_t fillPercentage = 31)
+    {
+        size_t n; 
+        while(n != fillPercentage * vT.capacity/32)
+        {
+            auto x = uniform(0, vT.capacity - 1, rndGenInUse);
+            // the check for membership is done to add only on inserting to the counter, not just 
+            // because visiting the the loop
+            if(!vT.member(x))
+            {
+                vT.insert(x); 
+                arr ~= x; 
+                ++n; 
+            }
+        
+        }
+        assert(n == fillPercentage*vT.capacity/32); 
+        return n; 
+    }
+
+    VEBtree fill(size_t M, Random rndGenInUse)
+    {
+        VEBtree vT = new VEBtree(M); 
+        for(auto i = 0; i < 1000; i++)
+        {
+            auto x = uniform(0U, vT.expectedSize, rndGenInUse); 
+            auto result = vT.insert(x); 
+        }
+        return vT; 
+    }
 }
 
 /**
@@ -104,7 +157,6 @@ in
 }
 body { return size_t(1) << (bsr(value) + 1); }
 ///
-
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
@@ -259,7 +311,7 @@ This is the struct to represent a VEB tree node. As memebers it contains the uS,
 well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size hSR(u). Each
 child node has a universe size of lSR(u)
 */
-private struct vebNode
+private struct VEBnode
 {
     /*
         This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
@@ -267,8 +319,8 @@ private struct vebNode
         property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
         an intermediate node. 
     */
-    vebNode* ptrArr; // the first member behaves different, as the others, as it is the summary node. 
-    @property ref vebNode summary()
+    VEBnode* ptrArr; // the first member behaves different, as the others, as it is the summary node. 
+    @property ref VEBnode summary()
     in { assert(!isLeaf); }
     body { return ptrArr[0]; }
     unittest
@@ -278,13 +330,13 @@ private struct vebNode
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto value = uniform!"[]"(0U,testedSize, rndGenInUse);
-        vebNode vN = vebNode(512); 
+        VEBnode vN = VEBnode(512); 
         assert(!vN.isLeaf); 
         vN.ptrArr[0]._val = 73; 
         assert(vN.summary._val == 73);
     }
     
-    @property vebNode* cluster()
+    @property VEBnode* cluster()
     in { assert(!isLeaf); }
     body { return (ptrArr + 1); }
     unittest
@@ -299,7 +351,7 @@ private struct vebNode
         writeln("value: ", value); 
         writeln("place: ", place); 
         */
-        vebNode vN = vebNode(4096); 
+        VEBnode vN = VEBnode(4096); 
         vN.ptrArr[place]._val = value; 
         assert(vN.ptrArr[place]._val == value); 
         assert(vN.cluster[place - 1]._val == value); // the right place: it is the (place - 1) location of clusters
@@ -324,11 +376,11 @@ private struct vebNode
     {
         if(uS > baseSize)
         {
-            vebNode[] tmp; 
+            VEBnode[] tmp; 
             tmp.reserve(hSR(uS) + 1);
-            tmp ~= vebNode(hSR(uS)); 
+            tmp ~= VEBnode(hSR(uS)); 
             for(size_t i = 1; i <= hSR(uS); ++i)
-                tmp ~= vebNode(lSR(uS)); 
+                tmp ~= VEBnode(lSR(uS)); 
             ptrArr = tmp.ptr; 
             nullify;
         }
@@ -345,7 +397,7 @@ private struct vebNode
         writeln("value: ", value); 
         writeln("place: ", place); 
         */
-        vebNode vN = vebNode(uS);
+        VEBnode vN = VEBnode(uS);
         if(uS <= baseSize)
         {
             assert(vN.isLeaf); 
@@ -442,7 +494,7 @@ private struct vebNode
 
         const auto value = uniform(0U,size_t.max, rndGenInUse);
         const auto bitNum = uniform(0U,baseSize, rndGenInUse);
-        vebNode vN = vebNode(baseSize); 
+        VEBnode vN = VEBnode(baseSize); 
         vN._val = value; 
         /*
         writeln(value); 
@@ -500,7 +552,7 @@ private struct vebNode
         rndGenInUse.seed(currentSeed); //initialize the random generator
         const size_t v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
         const size_t x = uniform(0U, baseSize, rndGenInUse);
-        vebNode vN = vebNode(baseSize); 
+        VEBnode vN = VEBnode(baseSize); 
         vN._val = v; 
         /*
         writeln("v: ", v); 
@@ -557,7 +609,7 @@ private struct vebNode
         rndGenInUse.seed(currentSeed); //initialize the random generator
         const size_t v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
         const size_t x = uniform(0U, baseSize, rndGenInUse);
-        vebNode vN = vebNode(baseSize); 
+        VEBnode vN = VEBnode(baseSize); 
         vN._val = v; 
         /*
         writeln("v: ", v); 
@@ -591,7 +643,7 @@ private struct vebNode
 
 unittest
 {
-    vebNode vN = vebNode(baseSize); 
+    VEBnode vN = VEBnode(baseSize); 
     static assert(vN.sizeof < baseSize/2); 
     assert(vN.isNull); 
     assert(vN.sizeof == 2 * size_t.sizeof); 
@@ -610,251 +662,16 @@ unittest
     assert(vN._val == 0); 
 }
 
-/+
-private struct vebNode_old
-{
-    uint _uS;
-    @nogc @property uint uS(){ return _uS; }
-    
-    // min value is contained in the node as a separate value, this value can't be found in child nodes. 
-    Nullable!uint _min; 
-    @nogc @property void min(uint value){ _min = value; }
-    @nogc @property Nullable!uint min() { return _min; }
-    
-    // max value is contained in the node as a separate value, this can be found in child nodes.
-    Nullable!uint _max; 
-    @nogc @property void max(uint value){ _max = value; }
-    @nogc @property Nullable!uint max(){ return _max; }
-    
-    // the node is empty, iff neither min nor max is set. 
-    @nogc @property bool empty() { return min.isNull; }
-    
-    // VEB node containing the summary node. 
-    private vebNode* _summary; 
-    // VEB cluster containing the child nodes.
-    private vebNode[] _cluster;
-    
-    
-    @disable this(); // initializing without providing a universe size is prohibited. 
-    this(uint uS) // ditto
-    {
-        this._uS = uS; 
-        initializeChildren(uS); 
-    }
-    
-    // after constructing the node, construct every of its children. 
-    private void initializeChildren(uint uS)
-    {
-        if(uS > BASE_SIZE)
-        {
-            auto childuS = hSR(uS); 
-            _summary = new vebNode(childuS); 
-            _cluster = iota(0,childuS).map!(a => vebNode(lSR(uS))).array; 
-        }
-    }
-    
-    /*
-    this function inserts a value into an empty node. The difference between empty and non empty insert is, that the
-    algorithm doesn't look into deepness of the tree, it just inserts the node to the separately stored min and max
-    members. 
-    */
-    @nogc private void emptyInsert(uint x)
-    {
-        min = x; 
-        max = x; 
-    }
-    
-    // this function inserts a value into a generic node. If the member exists, no insertion will be done. 
-    @nogc void insert(uint x)
-    {        
-        if(this.empty)
-            emptyInsert(x); 
-        else 
-        {
-            if(x < min)
-            {
-                auto temp = x; x = min; min = temp; 
-            }
-            
-            if(uS > BASE_SIZE)
-            {
-                if(_cluster[high(x)].min.isNull)
-                {
-                    _summary.insert(high(x)); 
-                    _cluster[high(x)].emptyInsert(low(x)); 
-                }
-                else
-                    _cluster[high(x)].insert(low(x)); 
-            }
-            if(x > max)
-                max = x; 
-        }
-    }
-    
-    // this function removes a value from the tree. If the value doesn't exist in the tree nothing will be happen. 
-    @nogc void remove(uint x)
-    {  
-        // case: there is only single element
-        if(min == max)
-        {
-            _min.nullify; 
-            _max.nullify; 
-        }
-        else if(BASE_SIZE == uS)
-        {
-            min = (x == 0) ? 1 : 0; 
-            max = min; 
-        }
-        else 
-        {
-            if(x == min)
-            {
-                auto firstcluster = _summary.min; 
-                x = index(firstcluster, _cluster[firstcluster].min); 
-                min = x; 
-            }
-            _cluster[high(x)].remove(low(x)); 
-            if(_cluster[high(x)].min.isNull)
-            {
-                _summary.remove(high(x)); 
-                if(x == max)
-                {
-                    auto summarymax = _summary.max;
-                    if(summarymax.isNull)
-                        max = min; 
-                    else
-                        max = index(summarymax, _cluster[summarymax].max); 
-                }
-            }
-            else if(x == max)
-                max = index(high(x), _cluster[high(x)].max); 
-        }
-    }
-    
-    /*
-    this function returns the successor of the given value, even, if the value is not present in the tree. 
-    If the value is maximum or greater then the maximum of the tree null is returned. 
-    */
-    @nogc Nullable!uint successor(uint x)
-    {
-        Nullable!uint result; 
-        
-        if(BASE_SIZE == uS)
-        {
-            if(x == 0 && max == 1)
-                result = 1; 
-        }
-        else
-        {
-            if(!min.isNull && x < min)
-                result = min; 
-            else
-            {
-                if(!max.isNull && x < max)
-                {
-                    auto maxlow = _cluster[high(x)].max;
-                    if(!maxlow.isNull && low(x) < maxlow)
-                    {
-                        auto offset = _cluster[high(x)].successor(low(x));
-                        result = index(high(x), offset); 
-                    }
-                    else
-                    {
-                        auto succcluster = _summary.successor(high(x)); 
-                        if(!succcluster.isNull)
-                        {
-                            auto offset = _cluster[succcluster].min; 
-                            result = index(succcluster, offset); 
-                        }
-                    }
-                }
-            }
-        }
-        return result; 
-    }
-    
-    /*
-    this function returns the predecessor of the given value, even, if the value is not present in the tree. 
-    if the value is the minimum or smaller then the minimum of the tree null is returned.
-    */
-    @nogc Nullable!uint predecessor(uint x)
-    {
-        Nullable!uint result; 
-        if(BASE_SIZE == uS)
-        { 
-            if(x == 1 && !min.isNull && min == 0)
-                result = 0; 
-        }
-        else
-        {
-            if(!max.isNull && x > max)
-                result = max; 
-            else
-            {
-                auto minlow = _cluster[high(x)].min; 
-                if(!minlow.isNull && low(x) > minlow)
-                {
-                    auto offset = _cluster[high(x)].predecessor(low(x)); 
-                    result = index(high(x), offset); 
-                }
-                else
-                {
-                    auto predcluster = _summary.predecessor(high(x)); 
-                    if(predcluster.isNull)
-                    {
-                        if(!min.isNull && x > min)
-                            result = min; 
-                    }
-                    else
-                    {
-                        auto offset = _cluster[predcluster].max; 
-                        result = index(predcluster, offset); 
-                    }
-                }
-            }
-        }
-        return result; 
-    }
-    
-    // This function returns whether the input key is currently member of the tree. 
-    @nogc bool member(uint x)
-    {
-        bool returnVal;
-       
-        if(x < uS)
-        {
-            if(!min.isNull && (min == x || max == x))
-                returnVal = true; 
-            else 
-            {
-                if(BASE_SIZE != uS)
-                    returnVal = _cluster[high(x)].member(low(x));
-            }
-        }
-        return returnVal; 
-    }
-    
-    // this function is an concretization of the module wide indexing function 
-    @nogc uint index(uint x, uint y){ return .index(uS, x, y); }
-
-    // this function is an concretization of the module wide indexing function     
-    @nogc uint high(uint x){ return .high(x, uS); }
-
-    // this function is an concretization of the module wide indexing function     
-    @nogc uint low(uint x){ return .low(x, uS); }
-}
-+/
-
 /**
 This struct represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step
 wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
 the reference to the root element, as the theory tells. The tree implements not only the documented interface of a 
 van VEB tree, but is also a bidirectional range. It supports two slice operations and a non-trivial opIndex operator. 
 */
-class vebTree
+class VEBtree
 {
     // the root element of the tree. 
-    private vebNode root; 
+    private VEBnode root; 
     // this member is updated on every insertion and deletion to give the current element count on O(1)
     private size_t _elementCount; 
     /// this member stores the initialization size, as it would be lost forever after initialization, otherwise
@@ -868,7 +685,7 @@ class vebTree
     in
     {
         assert(value > 1); 
-        // the passed value should be at most one over uint max
+        // the passed value should be at most one over uint max1
         assert(value <= maxSize);
     }
     body
@@ -878,7 +695,7 @@ class vebTree
         expectedSize = value; 
         //writeln("expectedSize: ", expectedSize); 
         // delegate the creation of the nodes with the apropriate power of two of the needed universe size
-        root = vebNode(nPof2(expectedSize - 1)); 
+        root = VEBnode(nPof2(expectedSize - 1)); 
         assert(root.isNull);
         //writeln("nPof2(expectedSize - 1): ", nPof2(expectedSize - 1));
     }
@@ -890,7 +707,7 @@ class vebTree
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(1U << size_t(1),testedSize, rndGenInUse);
-        vebTree vT = new vebTree(uS); 
+        VEBtree vT = new VEBtree(uS); 
         assert(vT.root.isNull);
         if((uS & (uS - 1)) == 0)
             assert(vT.capacity == uS); 
@@ -902,8 +719,8 @@ class vebTree
         //writeln("vT.expectedSize: ", vT.expectedSize); 
         const auto uS1 = uniform(1U << size_t(1),testedSize, rndGenInUse);
         const auto uSsmall = uniform(1U << size_t(1),baseSize, rndGenInUse);
-        vebTree vT1 = new vebTree(uS1); 
-        const vebTree vTsmall = new vebTree(uSsmall); 
+        VEBtree vT1 = new VEBtree(uS1); 
+        const VEBtree vTsmall = new VEBtree(uSsmall); 
 
         assert(vTsmall.root._val == 0);
         assert(vTsmall.root.ptrArr == null); 
@@ -954,24 +771,31 @@ class vebTree
     in
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
-        assert(range.length <= maxSize);
+        assert(range.length < maxSize);
     }
     body
     {
         import std.algorithm.comparison : max;
+        //writeln("got array: ", range); 
         
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         size_t limit; 
         foreach(size_t i; range) limit = max(limit,i); 
         // assert no element has exceeded the allowed range of baseSize/2
-        assert(limit <= maxSize);
+        assert(limit < maxSize);
         // if the array is longer, then the greatest element, but the length passes, substitute the limit
         limit = max(limit, range.length); 
         // call the constructor with the limit
-        this(limit);
+        //writeln("limit: ", limit); 
+        this(limit + 1);
+        //writeln("capacity: ", capacity); 
         // put every element from the range into the tree
-        foreach(size_t i; range) insert(i); 
+        foreach(size_t i; range) 
+        {
+            //writeln("i: ", i);
+            insert(i); 
+        }
     }
     
     public
@@ -991,10 +815,9 @@ class vebTree
             return retVal; 
         }
 
-        private bool insert(size_t value, ref vebNode vN, size_t uS)
-        in { assert(value < capacity); }
-        body
+        private bool insert(size_t value, ref VEBnode vN, size_t uS)
         {
+            if(value >= capacity) return false; 
             import std.algorithm.comparison : min, max;
             //writeln("inserting: ", value);
             if(uS <= baseSize) 
@@ -1061,7 +884,7 @@ class vebTree
             rndGenInUse.seed(currentSeed); //initialize the random generator
 
             auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            vebTree vT = new vebTree(uS); 
+            VEBtree vT = new VEBtree(uS); 
 
             size_t n; 
             uint[allowedArraySize] insertedVals;  
@@ -1093,7 +916,7 @@ class vebTree
             return retVal; 
         }
 
-        private bool remove(size_t value, ref vebNode vN, size_t uS)
+        private bool remove(size_t value, ref VEBnode vN, size_t uS)
         {
             //writeln("remove function begins"); 
             //writeln("uS: ", uS); 
@@ -1156,7 +979,7 @@ class vebTree
             rndGenInUse.seed(currentSeed); //initialize the random generator
 
             auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            vebTree vT = new vebTree(uS); 
+            VEBtree vT = new VEBtree(uS); 
 
             size_t n; 
             uint[allowedArraySize] insertedVals;  
@@ -1193,7 +1016,7 @@ class vebTree
         /// this method is used to determine, whether an element is currently present in the tree
         bool member(size_t value) { return member(value, root, capacity); }
 
-        private bool member(size_t value, ref vebNode vN, size_t uS)
+        private bool member(size_t value, ref VEBnode vN, size_t uS)
         {
             //writeln("member call, value: ", value); 
             //writeln("member call, uS: ", uS); 
@@ -1218,7 +1041,7 @@ class vebTree
             rndGenInUse.seed(currentSeed); //initialize the random generator
              
             auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            vebTree vT = new vebTree(uS); 
+            VEBtree vT = new VEBtree(uS); 
 
             size_t n; 
             uint[allowedArraySize] insertedVals;  
@@ -1257,7 +1080,7 @@ class vebTree
         /// this method retrieves the successor of the given input.
         Nullable!(size_t, maxSize) successor(size_t value) { return successor(value, root, capacity); }
 
-        private Nullable!(size_t, maxSize) successor(size_t value, ref vebNode vN, size_t uS)
+        private Nullable!(size_t, maxSize) successor(size_t value, ref VEBnode vN, size_t uS)
         {
             /*
             writeln("got value: ", value); 
@@ -1432,7 +1255,7 @@ class vebTree
             rndGenInUse.seed(currentSeed); //initialize the random generator
              
             auto uS = uniform(allowedArraySize, testedSize, rndGenInUse);
-            vebTree vT = new vebTree(uS); 
+            VEBtree vT = new VEBtree(uS); 
 
             size_t n; 
             uint[allowedArraySize] insertedVals;  
@@ -1506,7 +1329,7 @@ class vebTree
         /// this method retrieves the predecessor of the given input. 
         Nullable!(size_t, maxSize) predecessor(size_t value) { return predecessor(value, root, capacity); }
 
-        private Nullable!(size_t, maxSize) predecessor(size_t value, ref vebNode vN, size_t uS)
+        private Nullable!(size_t, maxSize) predecessor(size_t value, ref VEBnode vN, size_t uS)
         {
             /*
             size_t[] suspiciousValues = [13525034, 12292095, 3000, 46, 42]; 
@@ -1657,7 +1480,7 @@ class vebTree
             rndGenInUse.seed(currentSeed); //initialize the random generator
              
             auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            vebTree vT = new vebTree(uS); 
+            VEBtree vT = new VEBtree(uS); 
 
             size_t n; 
             uint[allowedArraySize] insertedVals;  
@@ -1758,7 +1581,7 @@ class vebTree
     
     // forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
     // to construct a new one via an array
-    @property vebTree save() { return new vebTree(this[]); }
+    @property VEBtree save() { return new VEBtree(this[]); }
     
     /**
     opSlice operator to get the underlying array. 
@@ -1779,97 +1602,36 @@ class vebTree
                     retArray ~= successor(retArray[$-1]); 
             }
         }
+        //writeln(retArray); 
         return retArray; 
     }
     
-    // TODO: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
-    
-    version(unittest)
-    {
-        // this member stores the provided input on initialization. This value could be used to hard prevent of adding
-        // elements between this value and the capacity of the tree. 
-        @property auto elementCount(){ return this[].length; }
-        
-        auto fill(size_t m, Random rndGenInUse)
-        {
-            size_t n; 
-            for(size_t i = 0; i < m; ++i)
-            {
-                auto x = uniform(0, expectedSize, rndGenInUse);
-                // the check for membership is done to add only on inserting to the counter, not just 
-                // because visiting the the loop
-                if(!member(x))
-                {
-                    insert(x); 
-                    ++n; 
-                }
-            }
-            return n; 
-        }
-        
-        auto fill(ref size_t[] arr, Random rndGenInUse, size_t fillPercentage = 31)
-        {
-            size_t n; 
-            while(n != fillPercentage * capacity/32)
-            {
-                auto x = uniform(0, capacity - 1, rndGenInUse);
-                // the check for membership is done to add only on inserting to the counter, not just 
-                // because visiting the the loop
-                if(!member(x))
-                {
-                    insert(x); 
-                    arr ~= x; 
-                    ++n; 
-                }
-            
-            }
-            assert(n == fillPercentage*capacity/32); 
-            return n; 
-        }
-    }
+    // (optional) todo: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
 }
 
-///
-version(unittest)
-{
-    vebTree fill(size_t M, Random rndGenInUse)
-    {
-        vebTree vT = new vebTree(M); 
-        for(auto i = 0; i < 1000; i++)
-        {
-            auto x = uniform(0U, vT.expectedSize, rndGenInUse); 
-            auto result = vT.insert(x); 
-        }
-        return vT; 
-    }
-}
-/+
 ///
 unittest
 {
 
-    vebTree vT = new vebTree(100); 
+    VEBtree vT = new VEBtree(100); 
     assert(vT.root.isNull);
     auto result = vT.insert(2); 
     assert(result); 
     assert(!vT.root.isNull); 
-    assert(vT.member(2)); 
-    /* TODO: reactivate 
-    vebTree vT2 = vT.save(); 
+    assert(vT.member(2));     
+    VEBtree vT2 = vT.save(); 
     assert(vT2.member(2)); 
     result = vT2.insert(3); 
     assert(result); 
     assert(vT2.member(3)); 
     assert(!vT.member(3));
-    //*/
 }
-+/
-/+
+
 ///
 unittest
 {
-    assert(!__traits(compiles, new vebTree())); 
-    vebTree vT = new vebTree(1000); 
+    assert(!__traits(compiles, new VEBtree())); 
+    VEBtree vT = new VEBtree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     assert(vT.insert(2)); 
@@ -1881,7 +1643,6 @@ unittest
     assert(!vT.member(8)); 
     assert(vT.insert(8)); 
     assert(vT.member(8)); 
-    
     assert(vT.predecessor(75) == 8); 
     assert(vT.predecessor(90) == 88); 
     assert(vT.predecessor(7) == 5); 
@@ -1897,7 +1658,7 @@ unittest
     assert(!vT.member(1029)); 
     assert(vT.successor(1025).isNull);
     
-    auto vT2 = new vebTree(500); 
+    auto vT2 = new VEBtree(500); 
     assert(vT2.empty); 
     vT2.insert(50); 
     vT2.insert(500); 
@@ -1907,7 +1668,7 @@ unittest
     assert(vT2.successor(50) == 500); 
     
     /* about 30 seconds
-    auto vT3 = new vebTree(uint.max);
+    auto vT3 = new VEBtree(uint.max);
     assert(vT3.insert(5)); 
     assert(vT3.member(5));
     assert(vT3.capacity == cast(ulong)uint.max + 1);
@@ -1924,25 +1685,28 @@ unittest
     assert(vT.member(865)); 
     assert(vT.remove(865)); 
     assert(!vT.member(865)); 
+
 }
-+/
+
 ///
-/* TODO: reactivate 
+
 unittest
 {
-    auto currentSeed = 1_509_870_506; //unpredictableSeed(); // 83_843; 898_797_859; 
-    writeln("currSeed: ", currentSeed); 
+    auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
+    //writeln("currSeed: ", currentSeed); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     auto M = uniform(0U,testedSize, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
-    vebTree vT = new vebTree(M); //create the tree
+    VEBtree vT = new VEBtree(M); //create the tree
     assert(vT.capacity == nPof2(M)); 
     auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
+    /*
     writeln("vT.length: ", vT.length);
     writeln("vT.max: ", vT.max); 
     writeln("vT.min: ", vT.min); 
     writeln("vT.capacity: ", vT.capacity); 
+    */
     size_t n; 
     Nullable!(size_t, maxSize) i = vT.max; 
 
@@ -1950,7 +1714,7 @@ unittest
     while(!i.isNull)
     {
         ++n;
-        writeln(i); 
+        //writeln("i: ", i); 
         i = vT.predecessor(i); 
         if(n > m) break; 
     }
@@ -1965,22 +1729,23 @@ unittest
     }
     
     // assert, that all members are discovered, iff when no predecessors are left
-    //assert(n == m); 
+    assert(n == m); 
+    assert(o == m); 
+    /*
     writeln("------"); 
     writeln("n: ", n); 
     writeln("m: ", m);
-    //writeln("o: ", o);
+    writeln("o: ", o);
+    */
 }
-*/
+
 ///
-/*
-TODO: reactivate 
 unittest
 {
-    auto currentSeed = 433849; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = fill(M, rndGenInUse); //fill the tree with some values 
+    VEBtree vT = fill(M, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSize) i = vT.max; 
     
     // remove all members beginning from the maximum
@@ -1998,16 +1763,14 @@ unittest
     // assert, that all members are removed, iff when no predecessors are left. 
     assert(vT.empty); 
 }
-*/
 
 ///
-/* TODO: reactivate 
 unittest
 {
-    auto currentSeed = 438749; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = fill(M, rndGenInUse); //fill the tree with some values 
+    VEBtree vT = fill(M, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSize) i = vT.min;
     
     // remove all members beginning from the minimum
@@ -2027,15 +1790,12 @@ unittest
     // assert, that all members are removed, iff when no successors are left.
     assert(vT.empty); 
 }
-*/
 
 ///
-/*
-TODO: reactivate 
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
     vT.insert(0x00f0);
@@ -2058,14 +1818,12 @@ unittest
     assert(result); 
     assert(vT.predecessor(0x000f).isNull);
 }
-*/
 
 ///
-/* TODO: reactivate 
 unittest
 {
     uint M = 1 << 16; 
-    vebTree vT = new vebTree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.insert(0xf000); 
     assert(vT.member(0xf000)); 
     vT.insert(0x0f00); 
@@ -2088,28 +1846,23 @@ unittest
     assert(result); 
     assert(!vT.member(0x000f)); 
 }
-*/
 
 /// 
-/+
-TODO: reactivate 
 unittest
 {
     //stress test
-    auto currentSeed = 1948642567; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    // last test says: inserting and removing with veb of 8.126.464 elements lasts: 19secs,217ms
-    // something about 8*10^6 takes about 10 sec
-    // 32.5 * 10^6 takes 44,8 sec
-    auto M = uniform(0U, 1 << 15, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    // last test says: see below. 
+    auto M = uniform(1U, testedSize, rndGenInUse); // set universe size to some integer. 
+    VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
     assert(arr.length == howMuchFilled); 
     
-    vebTree vT2 = new vebTree(M); 
+    VEBtree vT2 = new VEBtree(M); 
     
     assert(vT2.capacity == vT.capacity); 
     
@@ -2122,13 +1875,13 @@ unittest
         {
             vT2.insert(i); 
         }
-        /*
-        foreach(uint i; arr)
+        
+        foreach(size_t i; arr)
         {
             vT2.remove(i); 
         }
         assert(vT2.empty);
-        */
+        
     }
     
     void fill2()
@@ -2143,25 +1896,31 @@ unittest
         this part is for speed test
     */
     /*
+        compiled with ldc2 vebtree.d -O -main -unittest
+        results of stress tests: 
+            size of tree: 16777216
+            howMuchFilled: 16252928
+            VEB: 2 secs, 382 ms, 588 μs, and 8 hnsecs
+    */
+    /*
     import std.stdio; 
+    writeln("size of tree: ", vT2.capacity); 
     writeln("howMuchFilled: ", howMuchFilled);
-    auto r = benchmark!(fill1, fill2)(1); 
+    //auto r = benchmark!(fill1, fill2)(1); 
+    auto r = benchmark!(fill1)(1); 
     //auto r = benchmark!(fill1)(1); 
     auto f0Result = to!Duration(r[0]); 
-    auto f1Result = to!Duration(r[1]); 
+    //auto f1Result = to!Duration(r[1]); 
     writeln("VEB: ", f0Result); //10ms
-    writeln("rbt: ", f1Result); //40sec
-    assert(f0Result < f1Result); 
+    //writeln("rbt: ", f1Result); //40sec
+    //assert(f0Result < f1Result); 
     //*/
 }
-+/
 
 ///
-/*
-TODO: reactivate 
 unittest
 {
-    uint currentSeed = 1230394; //unpredictableSeed(); 
+    uint currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer.
     uint[] sourceArr; 
@@ -2169,7 +1928,7 @@ unittest
     // generate a random array as the source for the tree
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     // constructor to test
-    vebTree vT = new vebTree(sourceArr); 
+    VEBtree vT = new VEBtree(sourceArr); 
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
     // check, that all values are filled 
@@ -2183,31 +1942,29 @@ unittest
     // check, that no other elements are present. 
     assert(vT.empty); 
 }
-*/
+
 ///
-/* TODO: reactivate 
 unittest
 {
-    auto currentSeed = 2349062; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     
     assert(setSymmetricDifference(vT[], sort(arr)).empty); 
 }
-*/
+
 ///
-/+ TODO: reactivate 
 unittest
 {
-    uint currentSeed = 2309532090; //unpredictableSeed(); 
+    uint currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     auto begin = 5; 
@@ -2216,34 +1973,32 @@ unittest
     /* test commented out due to disabling opSlice operation */
     //assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
-+/ 
+
 ///
-/* TODO: reactivate 
 unittest
 {
-    auto currentSeed = 1223409; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    vebTree vT = new vebTree(M); 
+    VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
     assert(vT.length == vT.elementCount); 
 }
+
+///
+/*
+unittest
+{
+    assert(isBidirectionalRange!VEBtree);
+}
 */
 
 ///
-/* TODO: reactivate 
 unittest
 {
-    assert(isBidirectionalRange!vebTree);
-}
-*/
-///
-/* TODO: reactivate 
-unittest
-{
-    vebTree vT = new vebTree(14);
+    VEBtree vT = new VEBtree(14);
     auto result = vT.insert(2); 
     assert(result); 
     result = vT.insert(5); 
@@ -2252,26 +2007,27 @@ unittest
     assert(result);
     assert(vT[] == [2, 5, 10]); 
 }
-*/
+
 ///
-/+
-TODO: reactivate 
+
+
 unittest
 {
+    /+
     //another stress test
-    auto currentSeed = 11351568; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    void fill16(){ vebTree vT = new vebTree(1 << 16); }
-    void fill17(){ vebTree vT = new vebTree(1 << 17); }
-    void fill18(){ vebTree vT = new vebTree(1 << 18); }
-    void fill19(){ vebTree vT = new vebTree(1 << 19); }    
-    void fill20(){ vebTree vT = new vebTree(1 << 20); }
-    void fill21(){ vebTree vT = new vebTree(1 << 21); }
-    void fill22(){ vebTree vT = new vebTree(1 << 22); }
-    void fill23(){ vebTree vT = new vebTree(1 << 23); }
-    void fill24(){ vebTree vT = new vebTree(1 << 24); }
-    void fill25(){ vebTree vT = new vebTree(1 << 25); }
+    void fill16(){ VEBtree vT = new VEBtree(1 << 16); }
+    void fill17(){ VEBtree vT = new VEBtree(1 << 17); }
+    void fill18(){ VEBtree vT = new VEBtree(1 << 18); }
+    void fill19(){ VEBtree vT = new VEBtree(1 << 19); }    
+    void fill20(){ VEBtree vT = new VEBtree(1 << 20); }
+    void fill21(){ VEBtree vT = new VEBtree(1 << 21); }
+    void fill22(){ VEBtree vT = new VEBtree(1 << 22); }
+    void fill23(){ VEBtree vT = new VEBtree(1 << 23); }
+    void fill24(){ VEBtree vT = new VEBtree(1 << 24); }
+    void fill25(){ VEBtree vT = new VEBtree(1 << 25); }
     
     /*
         This part is for speed test. 
@@ -2301,8 +2057,10 @@ unittest
     writeln("VEB with M of ", 1 << 24, ": ", f24Result);
     writeln("VEB with M of ", 1 << 25, ": ", f25Result); 
     //*/
+    +/
 }
-+/
+
+
 ///
 /*
     This unittest is for check of adding of big numbers
@@ -2312,15 +2070,6 @@ unittest
 
     /* 
     uint[] arr = [1, 2, 8, 2147483647]; 
-    auto vT = new vebTree(arr)); 
+    auto vT = new VEBtree(arr)); 
     */
 }
-
-///
-/* TODO: reactivate 
-unittest
-{
-    vebTree aux; 
-    assert(aux is null); 
-}
-*/
