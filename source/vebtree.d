@@ -59,35 +59,45 @@ module vebtree;
 import std.typecons; // used for Nullable 
 import core.bitop; // used for bit operations 
 import std.bitmanip; // used for bitfields 
-import std.traits; 
+import std.traits; // used for generating the tree given an iterable
+
+private enum vdebug = false; 
 
 version(unittest)
 { 
-    import std.stdio; 
+    static if(vdebug){import std.stdio;}
     import std.range; 
-    import std.algorithm; // iteration, setops, sorting and searching is used in unittest
+    import std.algorithm;
     import std.random; 
     import std.datetime; 
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
+    import std.math : sqrt; 
     size_t[] powersOfTwo = iota(0, 8 * size_t.sizeof).map!(a => size_t(1) << a).array; 
     Random rndGenInUse; 
 
-
-    void bin(ulong n)
+    // helping function for output a given value. 
+    static if(vdebug)
     {
-        import std.stdio : writeln; 
-        /* step 1 */
-        if (n > 1) bin(n/2);
-        /* step 2 */
-        write(n % 2);
+        void bin(size_t n)
+        {
+            /* step 1 */
+            if (n > 1) bin(n/2);
+            /* step 2 */
+            write(n % 2);
+        }
     }
+    
+    // during tests it is ok a tree with a random capacity not going up to the maximum one. 
     enum testedSize = 1 << 3 * size_t.sizeof;
+    // during tests helping static arrays are used, which have an absolute maximum of size_t.sizeof * 2^20 elements
     enum allowedArraySize = 1 << (2 * size_t.sizeof + size_t.sizeof/2); // choosed arbitrary, to avoid seg. faults
 
-    //
+    //an alternative method to calculate the amount of values contained in the tree. 
     auto elementCount(VEBtree vT){ return vT[].length; }
 
+    // some different filling functions for the tree. This simply tries to fill the tree with random numbers. Duplicates
+    // will be ignored, the given tree is modified. 
     auto fill(VEBtree vT, size_t m, Random rndGenInUse)
     {
         size_t n; 
@@ -104,10 +114,12 @@ version(unittest)
         }
         return n; 
     }
-        
+
+    // Ditto. This method asserts, that a given filling percentage is achieved. 
     auto fill(VEBtree vT, ref size_t[] arr, Random rndGenInUse, size_t fillPercentage = 31)
     {
         size_t n; 
+        arr.length = fillPercentage * vT.capacity/32; 
         while(n != fillPercentage * vT.capacity/32)
         {
             auto x = uniform(0, vT.capacity - 1, rndGenInUse);
@@ -116,24 +128,12 @@ version(unittest)
             if(!vT.member(x))
             {
                 vT.insert(x); 
-                arr ~= x; 
+                arr[n] = x; 
                 ++n; 
             }
-        
         }
         assert(n == fillPercentage*vT.capacity/32); 
         return n; 
-    }
-
-    VEBtree fill(size_t M, Random rndGenInUse)
-    {
-        VEBtree vT = new VEBtree(M); 
-        for(auto i = 0; i < 1000; i++)
-        {
-            auto x = uniform(0U, vT.expectedSize, rndGenInUse); 
-            auto result = vT.insert(x); 
-        }
-        return vT; 
     }
 }
 
@@ -142,6 +142,7 @@ version(unittest)
     of size_t and changes dynamically with the architecture used. 
 */
 enum baseSize = 8 * size_t.sizeof; 
+
 /**
     the maxSize defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
     changes dynamically with the architecture used. 
@@ -160,7 +161,7 @@ body { return size_t(1) << (bsr(value) + 1); }
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: nPof2.            "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: nPof2.            "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     
@@ -172,9 +173,9 @@ unittest
 }
 
 /**
-    This function returns the upper square root of the given input as integer. It is needed in the initialization step 
-    of the VEB tree to calculate the number of children of a given layer. The upper square root is defined by 2^{\lceil
-    (\lg u)/2\rceil}
+    This function returns the higher square root of the given input. It is needed in the initialization step 
+    of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
+    summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
 size_t hSR(size_t value) 
 {
@@ -192,12 +193,11 @@ size_t hSR(size_t value)
     return size_t(1) << (msb/2 + ((msb & 1) || ((value != 0) && (value & (value - 1))))); 
     //return 1 << (msb/2 + (value > (1 << msb) || (msb & 1)));
 }
-
 ///
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: hSR.              "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: hSR.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto hSR = hSR(M); 
@@ -205,8 +205,6 @@ unittest
     assert((hSR & (hSR - 1)) == 0); 
     if(hSR < uint.max)
     {
-        import std.math; 
-        import std.conv; 
         /*
         writeln("M: ", M); 
         writeln("hSR: ", hSR);
@@ -220,17 +218,16 @@ unittest
 }
 
 /**
-    This function returns the lower square root of the given input as integer. It is needed by the indexing functions
-    high(x), low(x) and index(x,y) of elements in the tree. The lower square root is defined by 2^{\lfloor(\lg
-    u)/2\rfloor}
+    This function returns the lower square root of the given input. It is needed by the indexing functions
+    high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
+    lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
 @nogc size_t lSR(size_t value) { return size_t(1) << (bsr(value)/2); }
-
 ///
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: lSR.              "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: lSR.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto lSR = lSR(M); 
@@ -243,22 +240,19 @@ unittest
     //writeln("lSR: ", lSR); 
     //writeln("check[1]: ", check[1]);
     //writeln("M: ", M);
-    import std.math; 
-    import std.conv; 
     if(lSR < size_t.max/2) assert((check[1]) > sqrt(to!float(M))); 
 }
 
 /*
 This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
-of a element in the tree. 
+of a element in the tree. It is a part of the ideal indexing function. 
 */
 private @nogc size_t high(size_t value, size_t uS) { return value >> (bsr(uS) / 2); }
-
 //
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: high.             "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: high.             "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     const size_t U = nPof2(M); 
@@ -269,15 +263,14 @@ unittest
 
 /*
 This is an index function defined as fmod(value, lSR(uS)). It is needed to find the appropriate
-value inside a cluster. 
+value inside a cluster. It is part of the ideal indexing function
 */
 private @nogc size_t low(size_t value, size_t uS) { return value & ((size_t(1) << (bsr(uS) / 2)) - 1); }
-
 //
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: low.              "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: low.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     const size_t U = nPof2(M); 
@@ -288,15 +281,14 @@ unittest
 
 /*
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
-relation holds: x = index(high(x), low(x))
+relation holds: x = index(high(x), low(x)). This is the ideal indexing function of the tree. 
 */
 private @nogc size_t index(size_t uS, size_t x, size_t y){ return (x * lSR(uS) + y); }
-
 //
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
-    write("UT: index.            "); writeln("seed: ", currentSeed); 
+    static if(vdebug){write("UT: index.            "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     //writeln("M: ", M);
@@ -307,9 +299,19 @@ unittest
 }
 
 /**
-This is the struct to represent a VEB tree node. As memebers it contains the uS, the min and the max value as
-well as a link to a summary node and a cluster, which is a range of VEB tree nodes of size hSR(u). Each
-child node has a universe size of lSR(u)
+    This is the struct to represent a VEB tree node. As memebers it contains a value and a pointer to the children
+    array. As the pointer does not know the size of the array, it has to be passed in all methods, which require an
+    access to it. 
+    Dependent from the (universe) size passed in a method the stored value will be interpretated in two different ways: 
+    If the parameter passed shows, that the universe size is below the bit size of the stored value, then, it can be
+    handled as a bit array and all operations decay to operations defined in core.bitop. This case correspond to
+    the state of the node being a leaf. No children exist and the pointer should stay uninitialized
+    Otherwise, the value is interpretated as two values, the minimum and maximum stored at the same place in memory. The
+    minimum and maximum shows, which range is achievable through this node. The parameters passed to a function of the
+    node have to be well chosen, to hit the appropriate child. 
+    The first element of the children array, if present is handled different. According to literature, it has the role
+    of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
+    level during an access. 
 */
 private struct VEBnode
 {
@@ -326,10 +328,9 @@ private struct VEBnode
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        write("UT: vN, summary.      "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vN, summary.      "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
-        auto value = uniform!"[]"(0U,testedSize, rndGenInUse);
         VEBnode vN = VEBnode(512); 
         assert(!vN.isLeaf); 
         vN.ptrArr[0]._val = 73; 
@@ -342,7 +343,7 @@ private struct VEBnode
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        write("UT: vN, cluster.      "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vN, cluster.      "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         const auto value = uniform!"[]"(0U, testedSize, rndGenInUse);
@@ -364,14 +365,49 @@ private struct VEBnode
     */ 
     union 
     {
-        size_t _val;  // ulong is known to be 64-bit. 
+        /*  
+            as the underlying type size_t is chosen. It is the intended choice, as this delivers the maximum storage
+            size without emulation of types, which size is not native to an architecture. 
+            As the value behaves different depending on the node being a leaf. A special consideration should be done,
+            how the unset state has to be stored. 
+            In case of being a leaf, the value is interpreated as bit vector, storing a "zero" correspond to setting the
+            least bit. So the unset state corresponds to value being zero. 
+            In case of being an intermediate node, the both stored values min and max correspond to a range. In this
+            case the state of being unset is modeled by a minimum set to a value greater then the maximum on
+            initialization. 
+            For the case a function is queried and the answer correnspond to a state being not set a Nullable.null is
+            returned from the very method. The null value in the Nullable type doesn't need to enlarge it, as on every
+            architecture all values beyond 2^(8 * size_t.sizeof / 2) - 1 stays unused It is not possible to construct
+            a tree large enough to contain these values. Due this fact the null-value for the Nullable is chosen to
+            2^(8 * size_t.sizeof / 2)
+        */
+        size_t _val;  
         mixin(bitfields!(
             size_t, "_min", baseSize/2, // the default value of the min is greater then the max. 
             size_t, "_max", baseSize/2
         ));
     }
 
+    /*
+        It is not allowed to construct a node without providing the current universe size as it has to be known on
+        creation whether the children nodes have to be constructed. 
+    */
     @disable this(); 
+    /*
+        Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
+        underlying value created and set to zero by default. 
+        If otherwise create an array of children. This array has to be (according to Cormen) of size of higher square
+        root of the current universe size + 1. The extra place is reserved for the summary. 
+        For each just created child call its constructor.
+        For the summary with the universe size of the higher square root of the current universe size. 
+        For each other child with the universe size of the lower square root of the currennt universe size. 
+        Then, assign the fully initialized children array to the pointer in the current node, doing approprate steps to
+        show, that this node is an intermediate node, not containing any values yet. 
+        The knowledge of the current universe size is lost at this moment. As this keeps every build up node smaller 
+        (and there could be a lot of them). This is why, the VEBtree class continues to hold the global universe size,
+        which is passed on every call to the root node. In this way this, extern saved value has the role of being
+        outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
+    */
     this(size_t uS)
     {
         if(uS > baseSize)
@@ -388,16 +424,15 @@ private struct VEBnode
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        write("UT: vN, __ctor.       "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vN, __ctor.       "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         const auto uS = uniform!"[]"(0U, testedSize, rndGenInUse);
-        const auto place = uniform(0U,baseSize, rndGenInUse);
         /*
         writeln("value: ", value); 
         writeln("place: ", place); 
         */
-        VEBnode vN = VEBnode(uS);
+        const VEBnode vN = VEBnode(uS);
         if(uS <= baseSize)
         {
             assert(vN.isLeaf); 
@@ -412,12 +447,19 @@ private struct VEBnode
         }
     }
 
-    @nogc @property bool isLeaf() { return ptrArr == null; }
+    /* convinience method to check, if the node belongs to the lowest level in the tree */
+    @nogc @property bool isLeaf() const { return ptrArr == null; }
     
-    @nogc @property bool isNull() { return isLeaf ? (_val == 0) : (_min > _max); }
+    /* method to check whether the current node holds a value */
+    @nogc @property bool isNull() const { return isLeaf ? (_val == 0) : (_min > _max); }
 
+    /* method executing the appropriate steps to nullify the current node */
     @nogc @property void nullify() { _val = isLeaf ? 0 : 1; }  
 
+    /* 
+        method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
+        mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
+    */
     @property Nullable!(size_t, maxSize) min()
     {
         // define the result as a nullable 
@@ -432,6 +474,9 @@ private struct VEBnode
         return retVal;  
     }
 
+    /*
+        setter for the min, setting either the lowest bit or the min part of the value. 
+    */
     @property void min(size_t value)
     {
         if(isLeaf)
@@ -447,6 +492,10 @@ private struct VEBnode
         }
     }
 
+    /* 
+        method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
+        vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
+    */
     @property Nullable!(size_t, maxSize) max()
     {
         // define the result as a nullable
@@ -461,6 +510,9 @@ private struct VEBnode
         return retVal;  
     }
 
+    /*
+        setter for the max, setting either the highest bit or the max part of the value. 
+    */
     @property void max(size_t value)
     {
         if(isLeaf) 
@@ -476,6 +528,9 @@ private struct VEBnode
         }
     }
 
+    /*
+        member method. returns whether the appropriate bit inside the bitvector is set. 
+    */
     bool member(size_t bitnum)
     in
     {
@@ -485,11 +540,11 @@ private struct VEBnode
         assert(bitnum < baseSize);
     }
     body { return bt(&_val, bitnum) != 0; }
-    
+    //
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        write("UT: vN, member.       "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vN, member.       "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         const auto value = uniform(0U,size_t.max, rndGenInUse);
@@ -507,7 +562,31 @@ private struct VEBnode
         if((vN._val & size_t(1) << bitNum) != 0 ) assert(vN.member(bitNum)); 
         if((vN._val & size_t(1) << bitNum) == 0 ) assert(!vN.member(bitNum)); 
     }
-    
+
+    /*
+        member method. this method is called from class with a universe size given. It performs recursion calls untill
+        the universe size is reduced to the base size. Then the overloaded member method is called. 
+    */
+    bool member(size_t value, size_t uS)
+    {
+        //writeln("member call, value: ", value); 
+        //writeln("member call, uS: ", uS); 
+        
+        if(uS <= baseSize) 
+        {
+            assert(this.ptrArr == null);
+            return member(value); 
+        }
+
+        if(this.isNull) return false; 
+        if(value == this.min || value == this.max) return true; 
+
+        return cluster[high(value, uS)].member(low(value, uS), lSR(uS)); 
+    }
+
+    /*
+        insert method. given a leaf, sets the bit and returns, whether the bit was unset. 
+    */
     bool insert(size_t bitnum)
     in
     {
@@ -518,6 +597,77 @@ private struct VEBnode
     }
     body { return bts(&_val, bitnum) == 0; }
 
+    /*
+        insert method. this method is called from class with a universe size given. It performs recursion calls untill
+        the universe size is reduced to the base size. Then the overloaded insert method is called. 
+    */
+    bool insert(size_t value, size_t uS)
+    {
+        import std.algorithm.comparison : min, max;
+        //writeln("inserting: ", value);
+        if(uS <= baseSize) 
+            {
+                //writeln("small insert: ", value); 
+                return this.insert(value); 
+                //assert(!vN.isNull);
+                //return res; 
+            }
+
+        //writeln("stay by me"); 
+        if(this.isNull)
+        {
+            //writeln("i2: ", value); 
+            this.min = value; 
+            this.max = value; 
+            assert(!this.isNull); 
+            return true; 
+        }
+
+        assert(!this.isNull);
+        assert(!this.min.isNull); 
+        assert(!this.max.isNull); 
+
+        if(value == this.min || value == this.max) return false; 
+
+        if(this.min == this.max)
+        {
+            //writeln("i3: ", value);
+            this.min = min(this.min, value); 
+            this.max = max(this.max, value); 
+            return true; 
+        }
+
+        //writeln("kk inserting: ", value);
+        //writeln("kk min ", vN.min); 
+        //writeln("kk max ", vN.max); 
+        // a swap can not be used here, as min is itself a (property) method 
+        if(value < this.min) {const auto tmp = value; value = this.min.get; this.min = tmp; }
+        // a swap can not be used here, as max is itself a (property) method 
+        if(value > this.max) {const auto tmp = value; value = this.max.get; this.max = tmp; }
+        //writeln("kk min ", vN.min); 
+        //writeln("kk max ", vN.max); 
+        //writeln("ll inserting: ", value);
+        
+        auto nextTreeIndex = high(value, uS); 
+        //writeln("nextTreeIndex: ", nextTreeIndex); 
+        //writeln("vN.ptrArr[nextTreeIndex].isNull: ", vN.ptrArr[nextTreeIndex].isNull);
+        if(cluster[nextTreeIndex].isNull)
+        {
+            //writeln("inserting into summary");
+            summary.insert(high(value, uS), hSR(uS));
+            //insert(high(value, uS), vN.summary, hSR(uS));
+        } 
+               //writeln("inserting into C:nextTreeIndex, low: ", nextTreeIndex, " ", low(value, uS));
+               //writeln("vN.ptrArr[nextTreeIndex].val: ", vN.ptrArr[nextTreeIndex]._val);
+        auto res = cluster[nextTreeIndex].insert(low(value, uS), lSR(uS)); 
+            //insert(low(value, uS), vN.cluster[nextTreeIndex], lSR(uS));
+                //writeln("vN.ptrArr[nextTreeIndex].val: ", vN.ptrArr[nextTreeIndex]._val);
+        return res;
+    }
+
+    /*
+        remove method. given a leaf, remove the bit and returns, whether the bit was set. 
+    */
     bool remove(size_t bitnum)
     in
     {
@@ -526,6 +676,76 @@ private struct VEBnode
     }
     body { return btr(&_val, bitnum) != 0; }
 
+    /*
+        remove method. this method is called from class with a universe size given. It performs recursion calls untill
+        the universe size is reduced to the base size. Then the overloaded remove method is called. 
+    */
+    bool remove(size_t value, size_t uS)
+    {
+        //writeln("remove function begins"); 
+        //writeln("uS: ", uS); 
+
+        if(uS <= baseSize) return this.remove(value);
+        if(this.isNull) return false; 
+        if(this.min == this.max)
+        {
+            if(this.min != value) return false; 
+            this.nullify; 
+            return true; 
+        }
+        if(value == this.min)
+        {
+            auto treeOffset = summary.min;
+            if(treeOffset.isNull)
+            {
+                this.min = this.max; 
+                return true; 
+            }
+            auto min = cluster[treeOffset].min; 
+            cluster[treeOffset].remove(min, lSR(uS)); 
+            //remove(min, vN.cluster[treeOffset], lSR(uS)); 
+
+            if(cluster[treeOffset].isNull)
+                summary.remove(treeOffset, hSR(uS)); 
+                //remove(treeOffset, vN.summary, hSR(uS));
+
+            this.min = index(uS, treeOffset, min); 
+            return true; 
+        }
+        if(value == this.max)
+        {
+            auto treeOffset = summary.max; 
+            if(treeOffset.isNull)
+            {
+                this.max = this.min; 
+                return true; 
+            }
+
+            auto max = cluster[treeOffset].max; 
+            cluster[treeOffset].remove(max, lSR(uS)); 
+            //remove(max, vN.cluster[treeOffset], lSR(uS)); 
+
+            if(cluster[treeOffset].isNull)
+                summary.remove(treeOffset, hSR(uS)); 
+                //remove(treeOffset, vN.summary, hSR(uS)); 
+
+            this.max = index(uS, treeOffset, max); 
+            return true; 
+        }
+
+        auto treeOffset = high(value, uS); 
+        const bool retVal = cluster[treeOffset].remove(low(value, uS), lSR(uS)); 
+        //remove(low(value, uS), vN.cluster[treeOffset], lSR(uS));
+        if(cluster[treeOffset].isNull)
+            summary.remove(treeOffset, hSR(uS)); 
+            //remove(treeOffset, vN.summary, hSR(uS)); 
+
+        return retVal; 
+    }
+
+    /*
+        predecessor method. given a leaf, returns the previous set bit if exists, otherwise Nullable.null
+    */
     Nullable!(size_t, maxSize) predecessor(size_t bitNum)
     in
     {
@@ -544,14 +764,14 @@ private struct VEBnode
         }
         return retVal; 
     }
-    
+    //
     unittest
     {
-        const size_t currentSeed = unpredictableSeed(); //2471218309
-        write("UT: vN, predecessor.  "); writeln("seed: ", currentSeed); 
+        const size_t currentSeed = unpredictableSeed();
+        static if(vdebug){write("uT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
-        const size_t v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
-        const size_t x = uniform(0U, baseSize, rndGenInUse);
+        const size_t v = uniform(0U, testedSize, rndGenInUse); //set universe size to some integer. 
+        const size_t x = uniform(1U, baseSize, rndGenInUse);
         VEBnode vN = VEBnode(baseSize); 
         vN._val = v; 
         /*
@@ -581,8 +801,158 @@ private struct VEBnode
 
         if(!found) assert(vN.predecessor(x).isNull); 
     }
-    
 
+    /*
+        predecessor method. this method is called from class with a universe size given. It performs recursion calls
+        until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
+    */
+    Nullable!(size_t, maxSize) predecessor(size_t value, size_t uS)
+    {
+        /*
+        size_t[] suspiciousValues = [13525034, 12292095, 3000, 46, 42]; 
+        if(canFind(suspiciousValues, value)) 
+            {
+                writeln("got value: ", value); 
+                writeln("uS: ", uS); 
+                write("bin(vN._val) "); bin(vN._val);
+                writeln(); 
+                writeln("vN.min: ", vN.min); 
+                writeln("vN.max: ", vN.max); 
+            }
+        */
+        Nullable!(size_t, maxSize) retVal; 
+        //writeln("value: ", value);
+        //writeln("uS: ", uS);
+        if(uS <= baseSize) 
+        {
+            //if(canFind(suspiciousValues, value)) writeln("sending value: ", value); 
+            return predecessor(value); 
+        }
+
+        //writeln("vN.isNull: ", vN.isNull);
+        if(this.isNull) return retVal; 
+        //writeln("vN.max: ", vN.max);
+        if(value > this.max) return this.max; 
+        //writeln("vN.min: ", vN.min);
+        if(value <= this.min) return retVal; 
+
+        // const auto subTreeIndex = high(value, uS); 
+        // const auto subTreeMin = vN.cluster[subTreeIndex].min; 
+        /*
+        writeln("subTreeIndex: ", subTreeIndex);
+        writeln("subTreeMin: ", vN.ptrArr[subTreeIndex].min);
+        writeln("low(value, uS): ", low(value, uS));
+        */
+
+      // if(subTreeMin.isNull || low(value, uS) <= subTreeMin)
+      //{
+        /*
+        writeln("high(value, uS): ", high(value, uS));
+        writeln("vN.ptrArr[0].isNull: ", vN.ptrArr[0].isNull);
+        writeln("vN.ptrArr[0].min: ", vN.ptrArr[0].min);
+        writeln("vN.ptrArr[0].max: ", vN.ptrArr[0].max);
+        writeln("vN.ptrArr[0].ptrArr: ", vN.ptrArr[0].ptrArr);
+        writeln("vN.ptrArr[0].isLeaf: ", vN.ptrArr[0].isLeaf);
+        writeln("vN.ptrArr[0]._min: ", vN.ptrArr[0]._min);
+        writeln("vN.ptrArr[0]._max: ", vN.ptrArr[0]._max);
+        writeln("vN.ptrArr[0]._val: ", vN.ptrArr[0]._val);
+        writeln("hSR(uS): ", hSR(uS));
+        */
+        // auto nextTree = predecessor(subTreeIndex, vN.summary, hSR(uS));
+        //writeln("nextTree: ", nextTree);
+        //if(nextTree.isNull || vN.ptrArr[nextTree + 1].isNull) return vN.max;
+        // if(nextTree.isNull || vN.cluster[nextTree].isNull) return vN.min; 
+        //if(!vN.ptrArr[nextTree + 1].isNull)
+        //{
+        //return index(uS, nextTree, vN.ptrArr[nextTree + 1].max);
+        // retVal = index(uS, nextTree, vN.cluster[nextTree].max);
+            //writeln("kuku: ", value);
+            // return retVal; 
+        //}   
+        // }
+
+        // retVal = index(uS, high(value, uS), predecessor(low(value, uS), vN.ptrArr[subTreeIndex], hSR(uS)));
+        // return retVal; 
+        //if(canFind(suspiciousValues, value)) writeln("easy steps done"); 
+        const auto minlow = cluster[high(value, uS)].min; 
+        if(!minlow.isNull && low(value, uS) > minlow)
+        {
+            /*
+            if(canFind(suspiciousValues, value))
+                {
+                    writeln("if 1"); 
+                    writeln("high(value, uS): ", high(value, uS)); 
+                    writeln("low(value, uS): ", low(value, uS)); 
+                    writeln("sending value (low(value, uS)): ", low(value, uS)); 
+                }
+            */
+            auto offset = cluster[high(value, uS)].predecessor(low(value, uS), lSR(uS));
+            /*
+            if(canFind(suspiciousValues, value))
+            {
+                writeln("got offset: ", offset); 
+                writeln("low: ", low(value, uS)); 
+                writeln("high: ", high(value, uS)); 
+                writeln("lSR: ", lSR(uS)); 
+                writeln("hSR: ", hSR(uS));
+                writeln("uS: ", uS);
+                write("bin: "); bin(value); 
+                writeln(); 
+            } 
+            */
+            retVal = index(uS, high(value, uS), offset); 
+            //if(canFind(suspiciousValues, value)) writeln("retVal: ", retVal); 
+        }
+        else
+        {
+            /*
+            if(canFind(suspiciousValues, value)) 
+            {
+                writeln("else 1"); 
+                writeln("low: ", low(value, uS)); 
+                writeln("high: ", high(value, uS)); 
+                writeln("lSR: ", lSR(uS)); 
+                writeln("hSR: ", hSR(uS));
+                writeln("uS: ", uS); 
+                write("bin: "); bin(value); 
+                writeln(); 
+                writeln("sending value (high(value, uS)): ", (high(value, uS))); 
+            }
+            */ 
+            auto predcluster = summary.predecessor(high(value, uS), hSR(uS));
+            //if(canFind(suspiciousValues, value)) writeln("predcluster: ", predcluster); 
+            if(predcluster.isNull)
+            {
+                /*
+                if(canFind(suspiciousValues, value))
+                {
+                    writeln("if 2"); 
+                    writeln("predcluster.isNull: ", predcluster.isNull); 
+                    writeln("vN.min: ", vN.min); 
+                    writeln("value: ", value); 
+                }
+                */
+                if(!this.min.isNull && value > this.min) return this.min; 
+            }
+            else
+            {
+                /*
+                if(canFind(suspiciousValues, value))
+                {
+                    writeln("else 2");
+                    writeln("predcluster.isNull: ", predcluster.isNull); 
+                }
+                */
+                auto offset = cluster[predcluster].max; 
+                retVal = index(uS, predcluster, offset); 
+            }
+        }
+        return retVal; 
+    }
+
+    /*
+        successor method. given a leaf, returns the next set bit if exists, otherwise Nullable.null
+    */
     Nullable!(size_t, maxSize) successor(size_t bitNum)
     in
     {
@@ -601,11 +971,11 @@ private struct VEBnode
         }
         return retVal; 
     }
-    
+    //
     unittest
     {
         const size_t currentSeed = unpredictableSeed();
-        write("UT: vN, successor.    "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vN, successor.    "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
         const size_t v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
         const size_t x = uniform(0U, baseSize, rndGenInUse);
@@ -638,9 +1008,182 @@ private struct VEBnode
         //writeln(vN.successor(x));
         if(!found) assert(vN.successor(x).isNull);
     }
-    
+
+    /*
+        successor method. this method is called from class with a universe size given. It performs recursion calls until
+        the universe size is reduced to the base size. Then the overloaded successor method is called. 
+    */
+    Nullable!(size_t, maxSize) successor(size_t value, size_t uS)
+    {
+        /*
+        writeln("got value: ", value); 
+        writeln("got uS: ", uS); 
+        writeln("baseSize is: ", baseSize); 
+        */
+        /*
+        size_t[] suspiciousValues = [20511]; 
+        if(canFind(suspiciousValues, value)) 
+            {
+                writeln("got value: ", value); 
+                writeln("uS: ", uS); 
+                write("bin(vN._val) "); bin(vN._val);
+                writeln(); 
+                writeln("vN.min: ", vN.min); 
+                writeln("vN.max: ", vN.max); 
+                writeln("vN.isNull: ", vN.isNull); 
+            }
+            */
+        Nullable!(size_t, maxSize) retVal; 
+        if(uS <= baseSize) 
+            {
+                /*
+                if(canFind(suspiciousValues, value))
+                {
+                    writeln("we got: ", value); 
+                    writeln("vN.successor(value): ", vN.successor(value)); 
+                }
+                */
+                assert(value < baseSize); 
+                return successor(value); 
+            }
+        if(this.isNull) return retVal; 
+        if(value < this.min) return this.min; 
+        if(value >= this.max) return retVal; 
+        //writeln("got past simple cases"); 
+
+//            const auto subTreeIndex = high(value, uS) + 1; 
+//            const auto subTreeMax = vN.ptrArr[subTreeIndex].max; 
+        /*
+        writeln("hhhhhhhhh: ", vN.ptrArr[subTreeIndex].max.isNull);
+        writeln("val: ", value); 
+        writeln("subTreeIndex: ", subTreeIndex);
+        writeln("subTreeMax: ", subTreeMax.isNull);
+        writeln("low(value, uS): ", low(value, uS));
+        */
+//            if(subTreeMax.isNull || low(value, uS) >= subTreeMax)
+//            {
+            //writeln("we got here");
+//                auto nextTree = successor(high(value, uS), vN.ptrArr[0], hSR(uS));
+            /*
+            writeln("nextTree.isNull: ", nextTree.isNull);
+            writeln(vN.ptrArr[nextTree + 1].isNull);
+            */
+//                if(nextTree.isNull || vN.ptrArr[nextTree + 1].isNull) return vN.max;
+            //if(vN.ptrArr[nextTree + 1].isNull) return vN.max; 
+
+//                retVal = index(uS, nextTree, vN.ptrArr[nextTree + 1].min); 
+//                return retVal; 
+//            }
+        //writeln("skipped the if");
+//            retVal = index(uS, high(value, uS), successor(low(value,
+//                uS), vN.ptrArr[subTreeIndex], hSR(uS)));
+/*
+        if(canFind(suspiciousValues, value)) 
+            {
+                writeln("simple cases passed"); 
+            }
+*/
+        const auto maxlow = cluster[high(value, uS)].max;
+        /*
+        if(canFind(suspiciousValues, value)) 
+            {
+                writeln("maxlow: ", maxlow); 
+                writeln("low(value, uS): ", low(value, uS)); 
+                writeln("high(value, uS): ", high(value, uS)); 
+            }
+            */
+            if(maxlow.isNull || low(value, uS) >= maxlow)
+            {
+                /*
+                if(canFind(suspiciousValues, value)) 
+                {
+                    writeln("if 1"); 
+                    writeln("maxlow: ", maxlow); 
+                    writeln("low(value, uS): ", low(value, uS)); 
+                    writeln("high(value, uS): ", high(value, uS)); 
+                    write("vN.summary._val: "); bin(vN.summary._val); 
+                    writeln(); 
+                }*/
+                auto nextTree = summary.successor(high(value, uS), hSR(uS)); 
+                if(nextTree.isNull) return this.max; 
+                retVal = index(uS, nextTree, cluster[nextTree].min); 
+            }
+            else
+            {
+                /*
+                if(canFind(suspiciousValues, value)) 
+                {
+                    writeln("if 2"); 
+                    writeln("maxlow: ", maxlow); 
+                    writeln("low(value, uS): ", low(value, uS)); 
+                    writeln("high(value, uS): ", high(value, uS)); 
+                }
+                */
+                auto nextTree = cluster[high(value, uS)].successor(low(value, uS), lSR(uS)); 
+                retVal = index(uS, high(value, uS), nextTree);
+            }
+            
+
+            /*
+            if(!maxlow.isNull && low(value, uS) < maxlow)
+            {
+                auto succcluster = successor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS)); 
+                retVal = index(uS, high(value, uS), succcluster); 
+            }
+            else
+            {
+                auto offset = successor(high(value, uS), vN.summary, hSR(uS)); 
+                if(offset.isNull) retVal =  vN.max; 
+                else retVal = index(lSR(uS), offset, vN.cluster[offset].min); 
+            }
+            */
+            /*
+        if(!maxlow.isNull && low(value, uS) < maxlow)
+                { //predecessor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS));
+                    if(canFind(suspiciousValues, value))
+                    {
+                        writeln("if 1"); 
+                        writeln("low(value, uS): ", low(value, uS)); 
+                        writeln("high(value, uS): ", high(value, uS)); 
+                        writeln("lSR(uS): ", lSR(uS)); 
+                        writeln("sending value from inside (low(value, uS)): ", low(value, uS)); 
+                    }
+                    auto offset = successor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS));
+                    //vN.cluster[high(value, uS)].successor(low(value, uS));
+                    if(canFind(suspiciousValues, value)) 
+                        {
+                            writeln("offset: ", offset); 
+                        }
+                    
+                    retVal = index(uS, high(value, uS), offset); 
+                }
+                else
+                {
+                    if(canFind(suspiciousValues, value))
+                    {
+                        writeln("else 1");
+                        writeln("low(value, uS): ", low(value, uS)); 
+                        writeln("high(value, uS): ", high(value, uS)); 
+                        writeln("lSR(uS): ", lSR(uS)); 
+                        writeln("hSR(uS): ", hSR(uS));
+                        writeln("sending value from inside (high(value, uS)): ", high(value, uS)); 
+                        write("bin of vN.summary val: "); bin(vN.summary._val); 
+                        writeln(); 
+                        writeln("val of vN.summary: ", vN.summary._val); 
+                    }
+                    auto succcluster = successor(high(value, uS), vN.summary, hSR(uS)); 
+                    if(!succcluster.isNull)
+                    {
+                        auto offset = vN.cluster[succcluster].min; 
+                        retVal = index(uS, succcluster, offset); 
+                    }
+                }      
+                */    
+        return retVal; 
+    }
 }
 
+///
 unittest
 {
     VEBnode vN = VEBnode(baseSize); 
@@ -663,10 +1206,9 @@ unittest
 }
 
 /**
-This struct represents the VEB tree itself. For the sake of convinience it saves the provided at the initialization step
-wished maximum element. However at the point of development it is only used for testing. Beyond this, it stores only
-the reference to the root element, as the theory tells. The tree implements not only the documented interface of a 
-van VEB tree, but is also a bidirectional range. It supports two slice operations and a non-trivial opIndex operator. 
+    This class represents the VEB tree itself. It saves the provided at the initialization step wished size. The
+    generated tree has the capacity of the next higher power of 2. Beyond this, it stores the root element, through
+    which all accesses to the tree are managed. The tree implements also the interface for being a bidirectional range.
 */
 class VEBtree
 {
@@ -680,12 +1222,14 @@ class VEBtree
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
     
-    /// to construct a VEB tree one should provide the maximum element one wish to be able to store. 
+    /**
+        to construct a VEB tree the wished size has to be provided. However, the size should be greater then one and
+        should not excess the maximum allowed size for the current architecture. 
+    */
     this(size_t value)
     in
     {
         assert(value > 1); 
-        // the passed value should be at most one over uint max1
         assert(value <= maxSize);
     }
     body
@@ -697,17 +1241,18 @@ class VEBtree
         // delegate the creation of the nodes with the apropriate power of two of the needed universe size
         root = VEBnode(nPof2(expectedSize - 1)); 
         assert(root.isNull);
+
         //writeln("nPof2(expectedSize - 1): ", nPof2(expectedSize - 1));
     }
-    
+    ///
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        write("UT: vT, __ctor.       "); writeln("seed: ", currentSeed); 
+        static if(vdebug){write("UT: vT, __ctor.       "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(1U << size_t(1),testedSize, rndGenInUse);
-        VEBtree vT = new VEBtree(uS); 
+        const VEBtree vT = new VEBtree(uS); 
         assert(vT.root.isNull);
         if((uS & (uS - 1)) == 0)
             assert(vT.capacity == uS); 
@@ -763,10 +1308,9 @@ class VEBtree
                 }
             }
         }
-
     }
     
-    /// another possibility is to construct a VEB tree by providing an array.
+    /// another possibility is to construct a VEB tree is by providing an array.
     this(R)(R range) if(isIterable!R)
     in
     {
@@ -798,789 +1342,342 @@ class VEBtree
         }
     }
     
-    public
+    /** 
+        this method returns the capacity of the tree. It is equal to the next power of 2 regarding the size used at
+        initialization. 
+    */
+    size_t capacity() const { return nPof2(expectedSize - 1); }
+    
+    
+    /// this method is used to add an element to the tree. duplicate values will be ignored. 
+    bool insert(size_t value)
     {
-        /** 
-            this method returns the capacity of the tree. It is equal to the next power of two with regard to the
-            maximum element 
-        */
-        size_t capacity() { return nPof2(expectedSize - 1); }
-    
-    
-        /// this method is used to add an element to the tree. duplicate values will be ignored. 
-        bool insert(size_t value)
-        {
-            const bool retVal = insert(value, root, capacity); 
-            if(retVal) ++_elementCount; 
-            return retVal; 
-        }
-
-        private bool insert(size_t value, ref VEBnode vN, size_t uS)
-        {
-            if(value >= capacity) return false; 
-            import std.algorithm.comparison : min, max;
-            //writeln("inserting: ", value);
-            if(uS <= baseSize) 
-                {
-                    //writeln("small insert: ", value); 
-                    return vN.insert(value); 
-                    //assert(!vN.isNull);
-                    //return res; 
-                }
-
-            //writeln("stay by me"); 
-            if(vN.isNull)
-            {
-                //writeln("i2: ", value); 
-                vN.min = value; 
-                vN.max = value; 
-                assert(!vN.isNull); 
-                return true; 
-            }
-
-            assert(!vN.isNull);
-            assert(!vN.min.isNull); 
-            assert(!vN.max.isNull); 
-
-            if(value == vN.min || value == vN.max) return false; 
-
-            if(vN.min == vN.max)
-            {
-                //writeln("i3: ", value);
-                vN.min = min(vN.min, value); 
-                vN.max = max(vN.max, value); 
-                return true; 
-            }
-
-            //writeln("kk inserting: ", value);
-            //writeln("kk min ", vN.min); 
-            //writeln("kk max ", vN.max); 
-            // a swap can not be used here, as min is itself a (property) method 
-            if(value < vN.min) {const auto tmp = value; value = vN.min.get; vN.min = tmp; }
-            // a swap can not be used here, as max is itself a (property) method 
-            if(value > vN.max) {const auto tmp = value; value = vN.max.get; vN.max = tmp; }
-            //writeln("kk min ", vN.min); 
-            //writeln("kk max ", vN.max); 
-            //writeln("ll inserting: ", value);
-            
-            auto nextTreeIndex = high(value, uS); 
-            //writeln("nextTreeIndex: ", nextTreeIndex); 
-            //writeln("vN.ptrArr[nextTreeIndex].isNull: ", vN.ptrArr[nextTreeIndex].isNull);
-            if(vN.cluster[nextTreeIndex].isNull)
-            {
-                //writeln("inserting into summary");
-                insert(high(value, uS), vN.summary, hSR(uS));
-            } 
-                   //writeln("inserting into C:nextTreeIndex, low: ", nextTreeIndex, " ", low(value, uS));
-                   //writeln("vN.ptrArr[nextTreeIndex].val: ", vN.ptrArr[nextTreeIndex]._val);
-            auto res = insert(low(value, uS), vN.cluster[nextTreeIndex], lSR(uS));
-                    //writeln("vN.ptrArr[nextTreeIndex].val: ", vN.ptrArr[nextTreeIndex]._val);
-            return res;
-        }
-        unittest
-        {
-            auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-            write("UT: vT, insert.       "); writeln("seed: ", currentSeed); 
-            rndGenInUse.seed(currentSeed); //initialize the random generator
-
-            auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            VEBtree vT = new VEBtree(uS); 
-
-            size_t n; 
-            uint[allowedArraySize] insertedVals;  
-            while(n < allowedArraySize)
-            {
-                auto valToInsert = uniform(0U, uS, rndGenInUse); 
-                bool inserted = vT.insert(valToInsert); 
-                if(inserted)
-                {
-                    insertedVals[n] = valToInsert; 
-                    n++;
-                }
-            }
-            assert(vT._elementCount == insertedVals.length); 
-            
-            sort(insertedVals[]); 
-            assert(uniq(insertedVals[]).array.length == insertedVals.length); 
-            //writeln(insertedVals); 
-            //writeln(insertedVals.count); 
-        }
-        /// this method overrides the insert method to directly use arrays
-        void insert(R)(R arr) if(isIterable!R){ foreach(size_t i; arr) insert(i); }
-
-        /// this method is used to remove elements from the tree. not existing values will be ignored. 
-        bool remove(size_t value)
-        {
-            const bool retVal = remove(value, root, capacity); 
-            if(retVal) --_elementCount; 
-            return retVal; 
-        }
-
-        private bool remove(size_t value, ref VEBnode vN, size_t uS)
-        {
-            //writeln("remove function begins"); 
-            //writeln("uS: ", uS); 
-
-            if(uS <= baseSize) return vN.remove(value);
-            if(vN.isNull) return false; 
-            if(vN.min == vN.max)
-            {
-                if(vN.min != value) return false; 
-                vN.nullify; 
-                return true; 
-            }
-            if(value == vN.min)
-            {
-                auto treeOffset = vN.summary.min;
-                if(treeOffset.isNull)
-                {
-                    vN.min = vN.max; 
-                    return true; 
-                }
-                auto min = vN.cluster[treeOffset].min; 
-                remove(min, vN.cluster[treeOffset], lSR(uS)); 
-
-                if(vN.cluster[treeOffset].isNull)
-                    remove(treeOffset, vN.summary, hSR(uS));
-
-                vN.min = index(uS, treeOffset, min); 
-                return true; 
-            }
-            if(value == vN.max)
-            {
-                auto treeOffset = vN.summary.max; 
-                if(treeOffset.isNull)
-                {
-                    vN.max = vN.min; 
-                    return true; 
-                }
-
-                auto max = vN.cluster[treeOffset].max; 
-                remove(max, vN.cluster[treeOffset], lSR(uS)); 
-
-                if(vN.cluster[treeOffset].isNull)
-                    remove(treeOffset, vN.summary, hSR(uS)); 
-
-                vN.max = index(uS, treeOffset, max); 
-                return true; 
-            }
-
-            auto treeOffset = high(value, uS); 
-            const bool retVal = remove(low(value, uS), vN.cluster[treeOffset], lSR(uS));
-            if(vN.cluster[treeOffset].isNull)
-                remove(treeOffset, vN.summary, hSR(uS)); 
-
-            return retVal; 
-        }
-        unittest
-        {
-            auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-            write("UT: vT, remove.       "); writeln("seed: ", currentSeed); 
-            rndGenInUse.seed(currentSeed); //initialize the random generator
-
-            auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            VEBtree vT = new VEBtree(uS); 
-
-            size_t n; 
-            uint[allowedArraySize] insertedVals;  
-            
-            while(n < allowedArraySize)
-            {
-                auto valToInsert = uniform(0U, uS, rndGenInUse); 
-                bool inserted = vT.insert(valToInsert); 
-                if(inserted)
-                {
-                    insertedVals[n] = valToInsert; 
-                    n++; 
-                }
-            }
-            
-            assert(vT._elementCount == insertedVals.length); 
-            /*
-            writeln("n: ", insertedVals.length);
-            writeln("uS: ", uS); 
-            writeln("capacity: ", vT.capacity); 
-            writeln("inserted: ", insertedVals); 
-            writeln("vT.root._val: ", vT.root._val); 
-            */
-            foreach(size_t i; insertedVals)
-            {
-                //writeln("removing: ", i); 
-                bool removed = vT.remove(i); 
-                //writeln("removed: ", removed); 
-                //writeln("vT.root._val: ", vT.root._val); 
-            }
-            assert(vT.length == 0); 
-        }
-
-        /// this method is used to determine, whether an element is currently present in the tree
-        bool member(size_t value) { return member(value, root, capacity); }
-
-        private bool member(size_t value, ref VEBnode vN, size_t uS)
-        {
-            //writeln("member call, value: ", value); 
-            //writeln("member call, uS: ", uS); 
-            if(value >= capacity) return false; 
-            if(uS <= baseSize) 
-                {
-                    assert(vN.ptrArr == null);
-                    return vN.member(value); 
-                }
-
-            if(vN.isNull) return false; 
-            if(value == vN.min || value == vN.max) return true; 
-
-            return member(low(value, uS), vN.cluster[high(value, uS)], 
-                lSR(uS)); 
-        }
-        
-        unittest
-        {
-            auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-            write("UT: vT, member.       "); writeln("seed: ", currentSeed); 
-            rndGenInUse.seed(currentSeed); //initialize the random generator
-             
-            auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            VEBtree vT = new VEBtree(uS); 
-
-            size_t n; 
-            uint[allowedArraySize] insertedVals;  
-            while(n < allowedArraySize)
-            {
-                auto valToInsert = uniform(0U, uS, rndGenInUse); 
-                bool inserted = vT.insert(valToInsert); 
-                if(inserted)
-                {
-                    insertedVals[n] = valToInsert; 
-                    n++;
-                }
-            }
-            
-            sort(insertedVals[]); 
-            auto sortedInserted = assumeSorted(insertedVals[]); 
-            for(size_t i; i < testedSize; ++i)
-            {
-                if(sortedInserted.contains(i))
-                    {
-                        assert(vT.member(i));
-                    }
-                else 
-                    {
-                        assert(!vT.member(i), "i: " ~ to!string(i)); //10481664, 8908800
-                    }
-            }
-        }
-        
-        /// this method is used to determine the minimum of the tree
-        @property Nullable!(size_t, maxSize) min(){ return root.min; }
-
-        /// this method is used to determine the maximum of the tree    
-        @property Nullable!(size_t, maxSize) max(){ return root.max; }
-
-        /// this method retrieves the successor of the given input.
-        Nullable!(size_t, maxSize) successor(size_t value) { return successor(value, root, capacity); }
-
-        private Nullable!(size_t, maxSize) successor(size_t value, ref VEBnode vN, size_t uS)
-        {
-            /*
-            writeln("got value: ", value); 
-            writeln("got uS: ", uS); 
-            writeln("baseSize is: ", baseSize); 
-            */
-            /*
-            size_t[] suspiciousValues = [20511]; 
-            if(canFind(suspiciousValues, value)) 
-                {
-                    writeln("got value: ", value); 
-                    writeln("uS: ", uS); 
-                    write("bin(vN._val) "); bin(vN._val);
-                    writeln(); 
-                    writeln("vN.min: ", vN.min); 
-                    writeln("vN.max: ", vN.max); 
-                    writeln("vN.isNull: ", vN.isNull); 
-                }
-                */
-            Nullable!(size_t, maxSize) retVal; 
-            if(uS <= baseSize) 
-                {
-                    /*
-                    if(canFind(suspiciousValues, value))
-                    {
-                        writeln("we got: ", value); 
-                        writeln("vN.successor(value): ", vN.successor(value)); 
-                    }
-                    */
-                    assert(value < baseSize); 
-                    return vN.successor(value); 
-                }
-            if(vN.isNull) return retVal; 
-            if(value < vN.min) return vN.min; 
-            if(value >= vN.max) return retVal; 
-            //writeln("got past simple cases"); 
-
-//            const auto subTreeIndex = high(value, uS) + 1; 
-//            const auto subTreeMax = vN.ptrArr[subTreeIndex].max; 
-            /*
-            writeln("hhhhhhhhh: ", vN.ptrArr[subTreeIndex].max.isNull);
-            writeln("val: ", value); 
-            writeln("subTreeIndex: ", subTreeIndex);
-            writeln("subTreeMax: ", subTreeMax.isNull);
-            writeln("low(value, uS): ", low(value, uS));
-            */
-//            if(subTreeMax.isNull || low(value, uS) >= subTreeMax)
-//            {
-                //writeln("we got here");
-//                auto nextTree = successor(high(value, uS), vN.ptrArr[0], hSR(uS));
-                /*
-                writeln("nextTree.isNull: ", nextTree.isNull);
-                writeln(vN.ptrArr[nextTree + 1].isNull);
-                */
-//                if(nextTree.isNull || vN.ptrArr[nextTree + 1].isNull) return vN.max;
-                //if(vN.ptrArr[nextTree + 1].isNull) return vN.max; 
-
-//                retVal = index(uS, nextTree, vN.ptrArr[nextTree + 1].min); 
-//                return retVal; 
-//            }
-            //writeln("skipped the if");
-//            retVal = index(uS, high(value, uS), successor(low(value,
-//                uS), vN.ptrArr[subTreeIndex], hSR(uS)));
-/*
-            if(canFind(suspiciousValues, value)) 
-                {
-                    writeln("simple cases passed"); 
-                }
-*/
-            const auto maxlow = vN.cluster[high(value, uS)].max;
-            /*
-            if(canFind(suspiciousValues, value)) 
-                {
-                    writeln("maxlow: ", maxlow); 
-                    writeln("low(value, uS): ", low(value, uS)); 
-                    writeln("high(value, uS): ", high(value, uS)); 
-                }
-                */
-                if(maxlow.isNull || low(value, uS) >= maxlow)
-                {
-                    /*
-                    if(canFind(suspiciousValues, value)) 
-                    {
-                        writeln("if 1"); 
-                        writeln("maxlow: ", maxlow); 
-                        writeln("low(value, uS): ", low(value, uS)); 
-                        writeln("high(value, uS): ", high(value, uS)); 
-                        write("vN.summary._val: "); bin(vN.summary._val); 
-                        writeln(); 
-                    }*/
-                    auto nextTree = successor(high(value, uS), vN.summary, hSR(uS)); 
-                    if(nextTree.isNull) return vN.max; 
-                    retVal = index(uS, nextTree, vN.cluster[nextTree].min); 
-                }
-                else
-                {
-                    /*
-                    if(canFind(suspiciousValues, value)) 
-                    {
-                        writeln("if 2"); 
-                        writeln("maxlow: ", maxlow); 
-                        writeln("low(value, uS): ", low(value, uS)); 
-                        writeln("high(value, uS): ", high(value, uS)); 
-                    }
-                    */
-                    auto nextTree = successor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS)); 
-                    retVal = index(uS, high(value, uS), nextTree);
-                }
-                
-
-                /*
-                if(!maxlow.isNull && low(value, uS) < maxlow)
-                {
-                    auto succcluster = successor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS)); 
-                    retVal = index(uS, high(value, uS), succcluster); 
-                }
-                else
-                {
-                    auto offset = successor(high(value, uS), vN.summary, hSR(uS)); 
-                    if(offset.isNull) retVal =  vN.max; 
-                    else retVal = index(lSR(uS), offset, vN.cluster[offset].min); 
-                }
-                */
-                /*
-            if(!maxlow.isNull && low(value, uS) < maxlow)
-                    { //predecessor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS));
-                        if(canFind(suspiciousValues, value))
-                        {
-                            writeln("if 1"); 
-                            writeln("low(value, uS): ", low(value, uS)); 
-                            writeln("high(value, uS): ", high(value, uS)); 
-                            writeln("lSR(uS): ", lSR(uS)); 
-                            writeln("sending value from inside (low(value, uS)): ", low(value, uS)); 
-                        }
-                        auto offset = successor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS));
-                        //vN.cluster[high(value, uS)].successor(low(value, uS));
-                        if(canFind(suspiciousValues, value)) 
-                            {
-                                writeln("offset: ", offset); 
-                            }
-                        
-                        retVal = index(uS, high(value, uS), offset); 
-                    }
-                    else
-                    {
-                        if(canFind(suspiciousValues, value))
-                        {
-                            writeln("else 1");
-                            writeln("low(value, uS): ", low(value, uS)); 
-                            writeln("high(value, uS): ", high(value, uS)); 
-                            writeln("lSR(uS): ", lSR(uS)); 
-                            writeln("hSR(uS): ", hSR(uS));
-                            writeln("sending value from inside (high(value, uS)): ", high(value, uS)); 
-                            write("bin of vN.summary val: "); bin(vN.summary._val); 
-                            writeln(); 
-                            writeln("val of vN.summary: ", vN.summary._val); 
-                        }
-                        auto succcluster = successor(high(value, uS), vN.summary, hSR(uS)); 
-                        if(!succcluster.isNull)
-                        {
-                            auto offset = vN.cluster[succcluster].min; 
-                            retVal = index(uS, succcluster, offset); 
-                        }
-                    }      
-                    */    
-            return retVal; 
-        }
-        unittest
-        {
-            auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-            write("UT: vT, successor.    "); writeln("seed: ", currentSeed); 
-            rndGenInUse.seed(currentSeed); //initialize the random generator
-             
-            auto uS = uniform(allowedArraySize, testedSize, rndGenInUse);
-            VEBtree vT = new VEBtree(uS); 
-
-            size_t n; 
-            uint[allowedArraySize] insertedVals;  
-            while(n < allowedArraySize)
-            {
-                auto valToInsert = uniform(0U, uS, rndGenInUse); 
-                bool inserted = vT.insert(valToInsert); 
-                if(inserted)
-                {
-                    insertedVals[n] = valToInsert; 
-                    n++;
-                }
-            }
-            
-            //writeln("size: ", vT.length); 
-            auto sortedInserted = assumeSorted(sort(insertedVals[])); 
-            //writeln("max: ", vT.max); 
-            //writeln("min: ", vT.min); 
-            //writeln("back: ", sortedInserted.back); 
-            //writeln("front: ", sortedInserted.front); 
-
-            assert(vT.max == sortedInserted.back); 
-            assert(vT.min == sortedInserted.front); 
-            size_t j; 
-
-            for(size_t i = 0; i <= testedSize; ++i)
-            {
-                /*
-                    if(i == 12292095 || i == 13525034)
-                    {
-                        writeln("i: ", i); 
-                        write("bin i + 1: ", i + 1, " "); bin(i + 1); 
-                        writeln(); 
-                        write("bin i: ", i, " "); bin(i); 
-                        writeln(); 
-                        writeln("expected result: ", sortedInserted.lowerBound(i)[$-1]);
-                    }
-                  */
-                   //writeln("sending value: ", i); 
-                const auto el = vT.successor(i); 
-                //if(i == 32) writeln("el: ", el); 
-                    //if(i == 12292095 || i == 13525034) 
-                        //writeln("ii: ", i); 
-                        /*
-                    if(i == 12292095 || i == 13525034)
-                    {
-                        writeln("elel: ", el); 
-                        assert(sortedInserted.contains(el.get)); 
-                        writeln(sortedInserted.contains(el.get)); 
-                    }
-                        */
-                
-                if(el.isNull)
-                {
-                    assert(i == vT.max); 
-                    assert(sortedInserted.contains(i));
-                    break; // quit the loop;
-                }
-                else
-                {
-                    //writeln("i: ", i); 
-                    //writeln("el: ", el); 
-                    if(sortedInserted.contains(i)) ++j; 
-                    //if(i == 32) writeln("sortedInserted[j]: ", sortedInserted[j]); 
-                    assert(el == sortedInserted[j]); 
-                }
-            }
-            
-        }
-
-        /// this method retrieves the predecessor of the given input. 
-        Nullable!(size_t, maxSize) predecessor(size_t value) { return predecessor(value, root, capacity); }
-
-        private Nullable!(size_t, maxSize) predecessor(size_t value, ref VEBnode vN, size_t uS)
-        {
-            /*
-            size_t[] suspiciousValues = [13525034, 12292095, 3000, 46, 42]; 
-            if(canFind(suspiciousValues, value)) 
-                {
-                    writeln("got value: ", value); 
-                    writeln("uS: ", uS); 
-                    write("bin(vN._val) "); bin(vN._val);
-                    writeln(); 
-                    writeln("vN.min: ", vN.min); 
-                    writeln("vN.max: ", vN.max); 
-                }
-            */
-            Nullable!(size_t, maxSize) retVal; 
-            //writeln("value: ", value);
-            //writeln("uS: ", uS);
-            if(uS <= baseSize) 
-                {
-                    //if(canFind(suspiciousValues, value)) writeln("sending value: ", value); 
-                    return vN.predecessor(value); 
-                }
-
-            //writeln("vN.isNull: ", vN.isNull);
-            if(vN.isNull) return retVal; 
-            //writeln("vN.max: ", vN.max);
-            if(value > vN.max) return vN.max; 
-            //writeln("vN.min: ", vN.min);
-            if(value <= vN.min) return retVal; 
-
-            // const auto subTreeIndex = high(value, uS); 
-            // const auto subTreeMin = vN.cluster[subTreeIndex].min; 
-            /*
-            writeln("subTreeIndex: ", subTreeIndex);
-            writeln("subTreeMin: ", vN.ptrArr[subTreeIndex].min);
-            writeln("low(value, uS): ", low(value, uS));
-            */
-
-              // if(subTreeMin.isNull || low(value, uS) <= subTreeMin)
-              //{
-                /*
-                writeln("high(value, uS): ", high(value, uS));
-                writeln("vN.ptrArr[0].isNull: ", vN.ptrArr[0].isNull);
-                writeln("vN.ptrArr[0].min: ", vN.ptrArr[0].min);
-                writeln("vN.ptrArr[0].max: ", vN.ptrArr[0].max);
-                writeln("vN.ptrArr[0].ptrArr: ", vN.ptrArr[0].ptrArr);
-                writeln("vN.ptrArr[0].isLeaf: ", vN.ptrArr[0].isLeaf);
-                writeln("vN.ptrArr[0]._min: ", vN.ptrArr[0]._min);
-                writeln("vN.ptrArr[0]._max: ", vN.ptrArr[0]._max);
-                writeln("vN.ptrArr[0]._val: ", vN.ptrArr[0]._val);
-                writeln("hSR(uS): ", hSR(uS));
-                */
-                // auto nextTree = predecessor(subTreeIndex, vN.summary, hSR(uS));
-                //writeln("nextTree: ", nextTree);
-                //if(nextTree.isNull || vN.ptrArr[nextTree + 1].isNull) return vN.max;
-                // if(nextTree.isNull || vN.cluster[nextTree].isNull) return vN.min; 
-                //if(!vN.ptrArr[nextTree + 1].isNull)
-                //{
-                //return index(uS, nextTree, vN.ptrArr[nextTree + 1].max);
-                // retVal = index(uS, nextTree, vN.cluster[nextTree].max);
-                    //writeln("kuku: ", value);
-                    // return retVal; 
-                //}   
-                // }
-
-                // retVal = index(uS, high(value, uS), predecessor(low(value, uS), vN.ptrArr[subTreeIndex], hSR(uS)));
-                // return retVal; 
-                //if(canFind(suspiciousValues, value)) writeln("easy steps done"); 
-                const auto minlow = vN.cluster[high(value, uS)].min; 
-                if(!minlow.isNull && low(value, uS) > minlow)
-                {
-                    /*
-                    if(canFind(suspiciousValues, value))
-                        {
-                            writeln("if 1"); 
-                            writeln("high(value, uS): ", high(value, uS)); 
-                            writeln("low(value, uS): ", low(value, uS)); 
-                            writeln("sending value (low(value, uS)): ", low(value, uS)); 
-                        }
-                    */
-                    auto offset = predecessor(low(value, uS), vN.cluster[high(value, uS)], lSR(uS));
-                    /*
-                    if(canFind(suspiciousValues, value))
-                    {
-                        writeln("got offset: ", offset); 
-                        writeln("low: ", low(value, uS)); 
-                        writeln("high: ", high(value, uS)); 
-                        writeln("lSR: ", lSR(uS)); 
-                        writeln("hSR: ", hSR(uS));
-                        writeln("uS: ", uS);
-                        write("bin: "); bin(value); 
-                        writeln(); 
-                    } 
-                    */
-                    retVal = index(uS, high(value, uS), offset); 
-                    //if(canFind(suspiciousValues, value)) writeln("retVal: ", retVal); 
-                }
-                else
-                {
-                    /*
-                    if(canFind(suspiciousValues, value)) 
-                    {
-                        writeln("else 1"); 
-                        writeln("low: ", low(value, uS)); 
-                        writeln("high: ", high(value, uS)); 
-                        writeln("lSR: ", lSR(uS)); 
-                        writeln("hSR: ", hSR(uS));
-                        writeln("uS: ", uS); 
-                        write("bin: "); bin(value); 
-                        writeln(); 
-                        writeln("sending value (high(value, uS)): ", (high(value, uS))); 
-                    }
-                    */ 
-                    auto predcluster = predecessor(high(value, uS), vN.summary, hSR(uS));
-                    //if(canFind(suspiciousValues, value)) writeln("predcluster: ", predcluster); 
-                    if(predcluster.isNull)
-                    {
-                        /*
-                        if(canFind(suspiciousValues, value))
-                        {
-                            writeln("if 2"); 
-                            writeln("predcluster.isNull: ", predcluster.isNull); 
-                            writeln("vN.min: ", vN.min); 
-                            writeln("value: ", value); 
-                        }
-                        */
-                        if(!vN.min.isNull && value > vN.min)
-                            return vN.min; 
-                    }
-                    else
-                    {
-                        /*
-                        if(canFind(suspiciousValues, value))
-                        {
-                            writeln("else 2");
-                            writeln("predcluster.isNull: ", predcluster.isNull); 
-                        }
-                        */
-                        auto offset = vN.cluster[predcluster].max; 
-                        retVal = index(uS, predcluster, offset); 
-                    }
-                }
-                return retVal; 
-        }
-        unittest
-        {
-            auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-            write("UT: vT, predecessor.  "); writeln("seed: ", currentSeed); 
-            rndGenInUse.seed(currentSeed); //initialize the random generator
-             
-            auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-            VEBtree vT = new VEBtree(uS); 
-
-            size_t n; 
-            uint[allowedArraySize] insertedVals;  
-            while(n < allowedArraySize)
-            {
-                auto valToInsert = uniform(0U, uS, rndGenInUse); 
-                bool inserted = vT.insert(valToInsert); 
-                if(inserted)
-                {
-                    insertedVals[n] = valToInsert; 
-                    n++;
-                }
-            }
-            
-            //writeln("size: ", vT.length); 
-            auto sortedInserted = assumeSorted(sort(insertedVals[])); 
-            //writeln("max: ", vT.max); 
-            //writeln("min: ", vT.min); 
-            //writeln("back: ", sortedInserted.back); 
-            //writeln("front: ", sortedInserted.front); 
-
-            assert(vT.max == sortedInserted.back); 
-            assert(vT.min == sortedInserted.front); 
-            size_t j = allowedArraySize - 1; 
-
-            size_t i = testedSize + 1; 
-            do
-            {
-                /*
-                    if(i == 12292095 || i == 13525034)
-                    {
-                        writeln("i: ", i); 
-                        write("bin i + 1: ", i + 1, " "); bin(i + 1); 
-                        writeln(); 
-                        write("bin i: ", i, " "); bin(i); 
-                        writeln(); 
-                        writeln("expected result: ", sortedInserted.lowerBound(i)[$-1]);
-                    }
-                  */
-                  //writeln("i: ", i);  
-                  --i;
-                const auto el = vT.predecessor(i); 
-                    //if(i == 12292095 || i == 13525034) 
-                        //writeln("ii: ", i); 
-                        /*
-                    if(i == 12292095 || i == 13525034)
-                    {
-                        writeln("elel: ", el); 
-                        assert(sortedInserted.contains(el.get)); 
-                        writeln(sortedInserted.contains(el.get)); 
-                    }
-                        */
-                
-                if(el.isNull)
-                {
-                    assert(i == vT.min); 
-                    assert(sortedInserted.contains(i));
-                    break; // quit the loop;
-
-                }
-                else
-                {
-                    //writeln("i: ", i); 
-                    //writeln("el: ", el); 
-                    if(sortedInserted.contains(i)) --j; 
-                    assert(el == sortedInserted[j]); 
-                }
-                 
-            }while(i > 0);
-        }
-
-        // this method is used to determine, whether the tree is currently containing an element. 
-        @property bool empty() { return root.isNull; }
-
-        // this method returns the minimium. 
-        @property size_t front()
-        in { assert(!root.isNull); }
-        body { return this.min; }
-
-        // this method removes the minimum element
-        void popFront(){ if(!empty) remove(min); }
-
-        // bidirectional range also needs
-        @property size_t back()
-        in { assert(!root.isNull); }
-        body { return this.max; }
-    
-        // this method removes the maximum element 
-        void popBack() { if(!empty) remove(max); }
-    
-        /**
-            This method returns the amount of elements currently present in the tree.
-            This is a draft version, as it uses the slice operator of the class. So getting this number has a complexity
-            proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
-        */
-        @property size_t length(){ return _elementCount; }
+        if(value >= capacity) return false; 
+        const bool retVal = root.insert(value, capacity); 
+        if(retVal) ++_elementCount; 
+        return retVal; 
     }
+    ///
+    unittest
+    {
+        auto currentSeed = unpredictableSeed();
+        static if(vdebug){write("UT: vT, insert.       "); writeln("seed: ", currentSeed);} 
+        rndGenInUse.seed(currentSeed); //initialize the random generator
+
+        auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
+        VEBtree vT = new VEBtree(uS); 
+
+        size_t n; 
+        uint[allowedArraySize] insertedVals;  
+        while(n < allowedArraySize)
+        {
+            auto valToInsert = uniform(0U, uS, rndGenInUse); 
+            bool inserted = vT.insert(valToInsert); 
+            if(inserted)
+            {
+                insertedVals[n] = valToInsert; 
+                n++;
+            }
+        }
+        assert(vT._elementCount == insertedVals.length); 
+        
+        sort(insertedVals[]); 
+        assert(uniq(insertedVals[]).array.length == insertedVals.length); 
+        //writeln(insertedVals); 
+        //writeln(insertedVals.count); 
+    }
+
+    /// this method overrides the insert method to directly use arrays
+    void insert(R)(R arr) if(isIterable!R){ foreach(size_t i; arr) insert(i); }
+
+    /// this method is used to remove elements from the tree. not existing values will be ignored. 
+    bool remove(size_t value)
+    {
+        const bool retVal = root.remove(value, capacity); 
+        if(retVal) --_elementCount; 
+        return retVal; 
+    }
+    ///
+    unittest
+    {
+        auto currentSeed = unpredictableSeed();
+        static if(vdebug){write("UT: vT, remove.       "); writeln("seed: ", currentSeed);} 
+        rndGenInUse.seed(currentSeed); //initialize the random generator
+
+        auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
+        VEBtree vT = new VEBtree(uS); 
+
+        size_t n; 
+        uint[allowedArraySize] insertedVals;  
+        
+        while(n < allowedArraySize)
+        {
+            auto valToInsert = uniform(0U, uS, rndGenInUse); 
+            bool inserted = vT.insert(valToInsert); 
+            if(inserted)
+            {
+                insertedVals[n] = valToInsert; 
+                n++; 
+            }
+        }
+        
+        assert(vT._elementCount == insertedVals.length); 
+        /*
+        writeln("n: ", insertedVals.length);
+        writeln("uS: ", uS); 
+        writeln("capacity: ", vT.capacity); 
+        writeln("inserted: ", insertedVals); 
+        writeln("vT.root._val: ", vT.root._val); 
+        */
+        foreach(size_t i; insertedVals)
+        {
+            //writeln("removing: ", i); 
+            bool removed = vT.remove(i); 
+            //writeln("removed: ", removed); 
+            //writeln("vT.root._val: ", vT.root._val); 
+        }
+        assert(vT.length == 0); 
+    }
+
+    /// this method is used to determine, whether an element is currently present in the tree
+    bool member(size_t value)
+    {
+        if(value >= capacity) return false;
+        return root.member(value, capacity); 
+    }
+    ///
+    unittest
+    {
+        auto currentSeed = unpredictableSeed();
+        static if(vdebug){write("UT: vT, member.       "); writeln("seed: ", currentSeed);} 
+        rndGenInUse.seed(currentSeed); //initialize the random generator
+         
+        auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
+        VEBtree vT = new VEBtree(uS); 
+
+        size_t n; 
+        uint[allowedArraySize] insertedVals;  
+        while(n < allowedArraySize)
+        {
+            auto valToInsert = uniform(0U, uS, rndGenInUse); 
+            bool inserted = vT.insert(valToInsert); 
+            if(inserted)
+            {
+                insertedVals[n] = valToInsert; 
+                n++;
+            }
+        }
+        
+        sort(insertedVals[]); 
+        auto sortedInserted = assumeSorted(insertedVals[]); 
+        for(size_t i; i < testedSize; ++i)
+        {
+            if(sortedInserted.contains(i))
+            {
+                assert(vT.member(i));
+            }
+            else 
+            {
+                assert(!vT.member(i), "i: " ~ to!string(i)); //10481664, 8908800
+            }
+        }
+    }
+        
+    /// this method is used to determine the minimum of the tree
+    @property Nullable!(size_t, maxSize) min(){ return root.min; }
+
+    /// this method is used to determine the maximum of the tree    
+    @property Nullable!(size_t, maxSize) max(){ return root.max; }
+
+    /// this method retrieves the successor of the given input.
+    Nullable!(size_t, maxSize) successor(size_t value) { return root.successor(value, capacity); }
+    unittest
+    {
+        auto currentSeed = unpredictableSeed();
+        static if(vdebug){write("UT: vT, successor.    "); writeln("seed: ", currentSeed);} 
+        rndGenInUse.seed(currentSeed); //initialize the random generator
+         
+        auto uS = uniform(allowedArraySize, testedSize, rndGenInUse);
+        VEBtree vT = new VEBtree(uS); 
+
+        size_t n; 
+        uint[allowedArraySize] insertedVals;  
+        while(n < allowedArraySize)
+        {
+            auto valToInsert = uniform(0U, uS, rndGenInUse); 
+            bool inserted = vT.insert(valToInsert); 
+            if(inserted)
+            {
+                insertedVals[n] = valToInsert; 
+                n++;
+            }
+        }
+        
+        //writeln("size: ", vT.length); 
+        auto sortedInserted = assumeSorted(sort(insertedVals[])); 
+        //writeln("max: ", vT.max); 
+        //writeln("min: ", vT.min); 
+        //writeln("back: ", sortedInserted.back); 
+        //writeln("front: ", sortedInserted.front); 
+
+        assert(vT.max == sortedInserted.back); 
+        assert(vT.min == sortedInserted.front); 
+        size_t j; 
+
+        for(size_t i = 0; i <= testedSize; ++i)
+        {
+            /*
+                if(i == 12292095 || i == 13525034)
+                {
+                    writeln("i: ", i); 
+                    write("bin i + 1: ", i + 1, " "); bin(i + 1); 
+                    writeln(); 
+                    write("bin i: ", i, " "); bin(i); 
+                    writeln(); 
+                    writeln("expected result: ", sortedInserted.lowerBound(i)[$-1]);
+                }
+              */
+               //writeln("sending value: ", i); 
+            const auto el = vT.successor(i); 
+            //if(i == 32) writeln("el: ", el); 
+                //if(i == 12292095 || i == 13525034) 
+                    //writeln("ii: ", i); 
+                    /*
+                if(i == 12292095 || i == 13525034)
+                {
+                    writeln("elel: ", el); 
+                    assert(sortedInserted.contains(el.get)); 
+                    writeln(sortedInserted.contains(el.get)); 
+                }
+                    */
+            
+            if(el.isNull)
+            {
+                assert(i == vT.max); 
+                assert(sortedInserted.contains(i));
+                break; // quit the loop;
+            }
+            else
+            {
+                //writeln("i: ", i); 
+                //writeln("el: ", el); 
+                if(sortedInserted.contains(i)) ++j; 
+                //if(i == 32) writeln("sortedInserted[j]: ", sortedInserted[j]); 
+                assert(el == sortedInserted[j]); 
+            }
+        }
+        
+    }
+
+    /// this method retrieves the predecessor of the given input. 
+    Nullable!(size_t, maxSize) predecessor(size_t value) { return root.predecessor(value, capacity); }
+    ///
+    unittest
+    {
+        auto currentSeed = unpredictableSeed();
+        static if(vdebug){write("uT: vT, predecessor.  "); writeln("seed: ", currentSeed);} 
+        rndGenInUse.seed(currentSeed); //initialize the random generator
+         
+        auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
+        VEBtree vT = new VEBtree(uS); 
+
+        size_t n; 
+        uint[allowedArraySize] insertedVals;  
+        while(n < allowedArraySize)
+        {
+            auto valToInsert = uniform(0U, uS, rndGenInUse); 
+            bool inserted = vT.insert(valToInsert); 
+            if(inserted)
+            {
+                insertedVals[n] = valToInsert; 
+                n++;
+            }
+        }
+        
+        //writeln("size: ", vT.length); 
+        auto sortedInserted = assumeSorted(sort(insertedVals[])); 
+        //writeln("max: ", vT.max); 
+        //writeln("min: ", vT.min); 
+        //writeln("back: ", sortedInserted.back); 
+        //writeln("front: ", sortedInserted.front); 
+
+        assert(vT.max == sortedInserted.back); 
+        assert(vT.min == sortedInserted.front); 
+        size_t j = allowedArraySize - 1; 
+
+        size_t i = testedSize + 1; 
+        do
+        {
+            /*
+                if(i == 12292095 || i == 13525034)
+                {
+                    writeln("i: ", i); 
+                    write("bin i + 1: ", i + 1, " "); bin(i + 1); 
+                    writeln(); 
+                    write("bin i: ", i, " "); bin(i); 
+                    writeln(); 
+                    writeln("expected result: ", sortedInserted.lowerBound(i)[$-1]);
+                }
+              */
+              //writeln("i: ", i);  
+              --i;
+            const auto el = vT.predecessor(i); 
+                //if(i == 12292095 || i == 13525034) 
+                    //writeln("ii: ", i); 
+                    /*
+                if(i == 12292095 || i == 13525034)
+                {
+                    writeln("elel: ", el); 
+                    assert(sortedInserted.contains(el.get)); 
+                    writeln(sortedInserted.contains(el.get)); 
+                }
+                    */
+            
+            if(el.isNull)
+            {
+                assert(i == vT.min); 
+                assert(sortedInserted.contains(i));
+                break; // quit the loop;
+
+            }
+            else
+            {
+                //writeln("i: ", i); 
+                //writeln("el: ", el); 
+                if(sortedInserted.contains(i)) --j; 
+                assert(el == sortedInserted[j]); 
+            }
+             
+        }while(i > 0);
+    }
+
+    /// this method is used to determine, whether the tree is currently containing an element. 
+    @property bool empty() { return root.isNull; }
+
+    /// this method returns the minimium. 
+    @property size_t front()
+    in { assert(!root.isNull); }
+    body { return root.min; }
+
+    /// this method removes the minimum element
+    void popFront(){ if(!empty) remove(min); }
+
+    /// bidirectional range also needs
+    @property size_t back()
+    in { assert(!root.isNull); }
+    body { return root.max; }
     
-    // forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
-    // to construct a new one via an array
+    /// this method removes the maximum element 
+    void popBack() { if(!empty) remove(max); }
+    
+    /// This method returns the amount of elements currently present in the tree.
+    @property size_t length()const { return _elementCount; }
+    
+    
+    /**
+        forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
+        to construct a new one via an array
+    */
     @property VEBtree save() { return new VEBtree(this[]); }
     
     /**
@@ -1588,24 +1685,69 @@ class VEBtree
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
     proportional to n. As this functionaly is not seen as crucial, it is enough for the first time. 
     */
-    //TODO: opSlice operator should be implemented as generator, to avoid memory reallocations.
-    private size_t[] opSlice()
+    auto opSlice()
     {
         size_t[] retArray; 
-        if(!min.isNull)
-        {
-            retArray ~= min;
-            if(min != max)
-            {
-                retArray.reserve(max - min + 1);
-                while(retArray[$-1] != max)
-                    retArray ~= successor(retArray[$-1]); 
-            }
-        }
-        //writeln(retArray); 
+        retArray.length = this.length; 
+        if(!this.min.isNull)
+            retArray[0] = this.min; 
+        for(size_t i = 1; i < retArray.length; ++i)
+            retArray[i] = successor(retArray[i-1]); 
         return retArray; 
     }
-    
+    /**
+        ditto
+    */
+    auto opSlice(size_t a, size_t b)
+    {
+        size_t[] retArray; 
+        size_t currMin; 
+        if(this.member(a))
+            currMin = a; 
+        else
+            if(!this.successor(a).isNull)
+                currMin = this.successor(a); 
+            else // nothing to do
+                return retArray;
+
+        /*
+        size_t currMax; 
+        if(this.member(b))
+            currMax = b; 
+        else
+            if(!this.predecessor(b).isNull)
+                currMax = this.predecessor(b); 
+            else
+                return retArray; 
+        */
+            /*
+            writeln("a: ", a); 
+            writeln("b: ", b); 
+            writeln(this.member(100));
+            */
+            //writeln("sss: ", this.successor(99)); 
+        retArray.length = b - currMin; 
+        retArray[0] = currMin; 
+        size_t counter = 1; 
+        /*
+        writeln("retArray.length: ", retArray.length); 
+        */
+        while(true) 
+        {
+            /*
+            writeln("counter: ", counter); 
+            writeln("pred: ", retArray[counter - 1]); 
+            */
+            assert(counter <= retArray.length); 
+            const auto succ = this.successor(retArray[counter - 1]); 
+            //writeln("succ: ", succ); 
+            if(succ.isNull || succ >= b) break;
+            retArray[counter] = succ; 
+            ++counter; 
+        }
+        retArray.length = counter; 
+        return retArray; 
+    }
     // (optional) todo: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
 }
 
@@ -1667,7 +1809,7 @@ unittest
     assert(vT2.successor(40) == 50);
     assert(vT2.successor(50) == 500); 
     
-    /* about 30 seconds
+    /* about 20 seconds in debug mode. 
     auto vT3 = new VEBtree(uint.max);
     assert(vT3.insert(5)); 
     assert(vT3.member(5));
@@ -1689,18 +1831,17 @@ unittest
 }
 
 ///
-
 unittest
 {
-    auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-    //writeln("currSeed: ", currentSeed); 
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: rand, succ.       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     auto M = uniform(0U,testedSize, rndGenInUse); //set universe size to some integer. 
     //M = 30_000_000; 
     VEBtree vT = new VEBtree(M); //create the tree
     assert(vT.capacity == nPof2(M)); 
-    auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
+    const auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
     /*
     writeln("vT.length: ", vT.length);
     writeln("vT.max: ", vT.max); 
@@ -1743,9 +1884,11 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: rand, pred        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = fill(M, rndGenInUse); //fill the tree with some values 
+    const auto M = uniform(0U, testedSize, rndGenInUse); // set universe size to some integer. 
+    VEBtree vT = new VEBtree(M); 
+    vT.fill(1000, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSize) i = vT.max; 
     
     // remove all members beginning from the maximum
@@ -1754,7 +1897,7 @@ unittest
     {
         result = vT.remove(i); 
         assert(result); 
-        auto j = vT.predecessor(i); 
+        const auto j = vT.predecessor(i); 
         if(!j.isNull)
             assert(j != i); 
         i = j; 
@@ -1768,20 +1911,20 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: rand, remove      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = fill(M, rndGenInUse); //fill the tree with some values 
+    const auto M = uniform(0U, testedSize, rndGenInUse); // set universe size to some integer. 
+    VEBtree vT = new VEBtree(M); 
+    vT.fill(1000, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSize) i = vT.min;
     
     // remove all members beginning from the minimum
     bool result; 
     while(!i.isNull)
-    {
-        import std.conv; 
-        
+    {        
         result = vT.remove(i); 
         assert(result); 
-        auto j = vT.successor(i); 
+        const auto j = vT.successor(i); 
         if(!j.isNull)
             assert(j != i); 
         i = j; 
@@ -1794,7 +1937,7 @@ unittest
 ///
 unittest
 {
-    uint M = 1 << 16; 
+    const uint M = testedSize; 
     VEBtree vT = new VEBtree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
@@ -1822,7 +1965,7 @@ unittest
 ///
 unittest
 {
-    uint M = 1 << 16; 
+    const uint M = testedSize; 
     VEBtree vT = new VEBtree(M); 
     vT.insert(0xf000); 
     assert(vT.member(0xf000)); 
@@ -1852,13 +1995,14 @@ unittest
 {
     //stress test
     auto currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: rand, stress      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    auto M = uniform(1U, testedSize, rndGenInUse); // set universe size to some integer. 
+    const auto M = uniform(1U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
-    auto howMuchFilled = vT.fill(arr, rndGenInUse); 
+    const auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
     assert(arr.length == howMuchFilled); 
     
@@ -1920,9 +2064,10 @@ unittest
 ///
 unittest
 {
-    uint currentSeed = unpredictableSeed(); 
+    const uint currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: rand, member      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    uint M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer.
+    const uint M = uniform(0U, testedSize, rndGenInUse); // set universe size to some integer.
     uint[] sourceArr; 
     sourceArr.length = M; 
     // generate a random array as the source for the tree
@@ -1946,10 +2091,11 @@ unittest
 ///
 unittest
 {
-    auto currentSeed = unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: rand, opslice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    const auto M = uniform(0U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
@@ -1960,40 +2106,31 @@ unittest
 ///
 unittest
 {
-    uint currentSeed = unpredictableSeed(); 
+    const uint currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: rand, opslice[].  "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
+    const auto M = uniform(0U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
-    auto begin = 5; 
-    auto end = 100; 
-    auto filterRes = sort(arr).filter!(a => a >= begin && a < end);
-    /* test commented out due to disabling opSlice operation */
-    //assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
+    const auto begin = 5; 
+    const auto end = 100; 
+    const auto filterRes = sort(arr).filter!(a => a >= begin && a < end).array;
+    /*
+    writeln("arr.length: ", arr.length); 
+    writeln("vT.length: ", vT.length);
+    writeln("filterRes: ", filterRes); 
+    writeln("vT[begin..end]: ", vT[begin..end]); 
+    */
+    assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
 
 ///
-unittest
-{
-    auto currentSeed = unpredictableSeed(); 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
-    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    auto M = uniform(0U, 1 << 16, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = new VEBtree(M); 
-    size_t[] arr; 
-    vT.fill(arr, rndGenInUse, 16); 
-    assert(vT.length == vT.elementCount); 
-}
-
-///
-/*
 unittest
 {
     assert(isBidirectionalRange!VEBtree);
 }
-*/
 
 ///
 unittest
@@ -2016,6 +2153,7 @@ unittest
     /+
     //another stress test
     auto currentSeed = unpredictableSeed(); 
+    static if(vdebug){write("UT: stress test 2  "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
     void fill16(){ VEBtree vT = new VEBtree(1 << 16); }
@@ -2067,9 +2205,8 @@ unittest
 */
 unittest
 {
-
-    /* 
-    uint[] arr = [1, 2, 8, 2147483647]; 
-    auto vT = new VEBtree(arr)); 
-    */
+    /* in debug mode about 1 min. 
+    const uint[] arr = [1, 2, 8, 2_147_483_647]; 
+    new VEBtree(arr); 
+    //*/
 }
