@@ -1,6 +1,14 @@
 # README #
 
-This repository contains a simplified Van Emde Boas tree written in D. Its operate on (currently) only unique integer keys. 
+This repository contains a Van Emde Boas tree written in D. It operates on unique integer keys. 
+
+See
+
+https://en.wikipedia.org/wiki/Van_Emde_Boas_tree
+
+and 
+
+Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, and Clifford Stein. Introduction to Algorithms, Third Edition. MIT Press, 2009. ISBN 978-0-262-53305-8. Chapter 20: The van Emde Boas tree, pp. 531–560.
 
 Example usage: 
 
@@ -40,4 +48,4 @@ Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
 
 License: https://opensource.org/licenses/MIT, MIT License
 
-Authors: Alexander Orlov, sascha.orlov@gmail.com
+Author: Alexander Orlov, sascha.orlov@gmail.com
