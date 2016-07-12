@@ -1,9 +1,13 @@
 # README #
 
 This repository contains a Van Emde Boas tree written in D. It operates on unique integer keys. 
+
 See
+
 https://en.wikipedia.org/wiki/Van_Emde_Boas_tree
+
 and 
+
 Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, and Clifford Stein. Introduction to Algorithms, Third Edition. MIT Press, 2009. ISBN 978-0-262-53305-8. Chapter 20: The van Emde Boas tree, pp. 531–560.
 
 Example usage: 
