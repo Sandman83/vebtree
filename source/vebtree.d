@@ -716,7 +716,7 @@ private struct VEBnode
     unittest
     {
         const size_t currentSeed = unpredictableSeed();
-        static if(vdebug){write("uT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
+        static if(vdebug){write("UT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
         const size_t v = uniform(2U, testedSize, rndGenInUse); //set universe size to some integer. 
         const size_t x = uniform(1U, baseSize, rndGenInUse);
@@ -985,7 +985,6 @@ class VEBtree
     body
     {
         import std.algorithm.comparison : max;
-        
         // first, we have to determine the size of the tree. 
         // it is either derived from the length of the given tree or its greatest element
         size_t limit; 
@@ -997,8 +996,7 @@ class VEBtree
         // call the constructor with the limit
         this(limit + 1);
         // put every element from the range into the tree
-        foreach(size_t i; range) 
-            insert(i); 
+        foreach(size_t i; range) insert(i); 
     }
     
     /** 
@@ -1129,78 +1127,26 @@ class VEBtree
     }
         
     /// this method is used to determine the minimum of the tree
-    @property Nullable!(size_t, maxSizeBound) min(alias boundaries = "()")()
-    { 
-        auto currentMin = root.min; 
-        static if(boundaries[0] == '[')
-            if(!currentMin.isNull)
-                return currentMin; 
-            else
-                return Nullable!(size_t, maxSizeBound)(0); 
-        else
-            return currentMin; 
-    }
+    @property Nullable!(size_t, maxSizeBound) min(){ return root.min; }
 
     /// this method is used to determine the maximum of the tree    
-    @property Nullable!(size_t, maxSizeBound) max(alias boundaries = "()")()
-    { 
-        auto currentMax = root.max; 
-        static if(boundaries[1] == ']')
-        {
-            if(!currentMax.isNull)
-                return currentMax; 
-            else
-                return Nullable!(size_t, maxSizeBound)(expectedSize); 
-        }
-        else return currentMax; 
-    }
+    @property Nullable!(size_t, maxSizeBound) max(){ return root.max; }
 
     /// this method retrieves the successor of the given input.
     Nullable!(size_t, maxSizeBound) successor(alias boundaries = "()")(size_t value)
     {
-        // in case of closed boundaries
-        static if(boundaries[1] == ']')
-        {
-            // define an upper bound 
-            size_t upperBound;
+        if(value >= capacity) return Nullable!(size_t, maxSizeBound)(); 
 
-            // get current upper bound: 
-            // if there are values exceeding expected size, the closed boundary is the capacity 
-            if(!root.successor(expectedSize - 1, capacity).isNull)
-            {
-                // guard condition, if the value exceeds the closed boundary (capacity)
-                if(value >= capacity) return Nullable!(size_t, maxSizeBound)(); 
-                // if the guard holds assign the upper bound 
-                upperBound = capacity; 
-            }
-            else // if there are no values exceeding the expected size, the closed boundary is the expected size
-            {
-                // guard condition, if the value exceeds the closed boundary (expected size)
-                if(value >= expectedSize) return Nullable!(size_t, maxSizeBound)(); 
-                // if the guard holds assign the upper bound 
-                upperBound = expectedSize; 
-            }
-        }
-        else // in case of open boundaries 
-        {   
-            // check, whether the value exceeds the available capacity and return null, if it does
-            if(value >= capacity) return Nullable!(size_t, maxSizeBound)(); 
-        }
-        
         // otherwise get the successor
         auto currentSuccessor = root.successor(value, capacity); 
         
         // in case of closed boundaries
-        static if(boundaries[1] == ']')
+        static if(boundaries[1] == ']') // if there is a successor (between the value and the upper bound)
         {
-            // if there is a successor (between the value and the upper bound)
-            if(!currentSuccessor.isNull) // return the successor
-                return currentSuccessor; 
-            else // otherwise return the bound (expected size or capacity)
-                return Nullable!(size_t, maxSizeBound)(upperBound); 
+            if(!currentSuccessor.isNull) return currentSuccessor; // return the successor
+            else return Nullable!(size_t, maxSizeBound)(capacity); // otherwise return the bound (capacity)
         }
-        else // in case of open boundaries return the successor (either null or an existent successor)
-            return currentSuccessor; 
+        else return currentSuccessor; // in case of open boundaries return the successor (null or a value)
     }
     unittest
     {
@@ -1214,7 +1160,7 @@ class VEBtree
         // testing the boundaries now: 
         auto randomElement = uniform(allowedArraySize, uS); 
         assert(vT.successor(randomElement).isNull);
-        assert(vT.successor!"[]"(randomElement) == vT.expectedSize);
+        assert(vT.successor!"[]"(randomElement) == vT.capacity);
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1269,7 +1215,7 @@ class VEBtree
     unittest
     {
         auto currentSeed = unpredictableSeed();
-        static if(vdebug){write("uT: vT, predecessor.  "); writeln("seed: ", currentSeed);} 
+        static if(vdebug){write("UT: vT, predecessor.  "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
          
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
@@ -1323,17 +1269,17 @@ class VEBtree
     @property bool empty() const { return root.isNull; }
 
     /// this method returns the minimium. 
-    @property size_t front(alias boundaries = "()")()
+    @property size_t front()
     in { assert(!this.empty); }
-    body { return this.min!boundaries; }
+    body { return this.min; }
 
     /// this method removes the minimum element
     void popFront(){ if(!empty) remove(min); }
 
     /// bidirectional range also needs
-    @property size_t back(alias boundaries = "()")()
+    @property size_t back()
     in { assert(!this.empty); }
-    body { return this.max!boundaries; }
+    body { return this.max; }
     
     /// this method removes the maximum element 
     void popBack() { if(!empty) remove(max); }
@@ -1362,20 +1308,13 @@ class VEBtree
         for(size_t i = 1; i < retArray.length; ++i)
         {
             auto succ = successor(retArray[i-1]); 
-            if(!succ.isNull)
-            retArray[i] = succ; 
+            if(!succ.isNull) retArray[i] = succ; 
         }
         return retArray; 
     }
 
     /// dollar operator overload. 
-    @property size_t opDollar()
-    {
-        if(!root.successor(expectedSize - 1, capacity).isNull)
-            return capacity;
-        else
-            return expectedSize; 
-    }
+    @property size_t opDollar() { return capacity; }
 
     /// ditto
     auto opSlice(size_t a, size_t b)
@@ -1411,7 +1350,32 @@ class VEBtree
     */
     auto exportTree(alias boundaries = "()")()
     {
+        size_t[] retArray;
+        auto exportLength = this.length; 
 
+        static if(boundaries[0] == '[') 
+            if(!this.member(0)) // if zero is not in the tree and we want to include the left boundary, the export grows
+                ++exportLength; 
+        static if(boundaries[1] == ']')
+            ++exportLength; // we want to include the capacity as value, so the export grows 
+        
+        if(exportLength == 0) return retArray; 
+        else retArray.length = exportLength;
+
+        static if(boundaries[0] == '[') retArray[0] = 0; 
+        else if(!this.empty) retArray[0] = this.min;
+        
+        static if(boundaries[1] == ']') retArray[$-1] = capacity; 
+        else if(!this.empty) retArray[$-1] = this.max;
+
+        for(size_t i = 1; i < retArray.length; ++i)
+        {
+            auto succ = successor!boundaries(retArray[i-1]); 
+            if(succ.isNull || succ == capacity) break; 
+            retArray[i] = succ; 
+        }
+
+        return retArray; 
     }
     // (optional) todo: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
 }
@@ -1419,7 +1383,6 @@ class VEBtree
 ///
 unittest
 {
-
     VEBtree vT = new VEBtree(100); 
     assert(vT.empty);
     auto result = vT.insert(2); 
@@ -1432,8 +1395,25 @@ unittest
     assert(result); 
     assert(vT2.member(3)); 
     assert(!vT.member(3));
+    assert(vT2.length == 2);
+    
 }
 
+///
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: vT, exportTree.   "); writeln("seed: ", currentSeed);} 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+
+    const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    VEBtree vT = new VEBtree(M); //create the tree
+    vT.fill(1000, rndGenInUse); 
+
+    assert(vT.exportTree == vT[]);
+    assert(vT.exportTree!"[)"[0] == 0); 
+    assert(vT.exportTree!"(]"[$-1] == vT.capacity); 
+}
 ///
 unittest
 {
@@ -1441,7 +1421,6 @@ unittest
     VEBtree vT = new VEBtree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
-    assert(vT.min!"[]" == 0);
     assert(vT.insert(2)); 
     vT.insert(5);
     assert(!vT.member(8)); 
@@ -1463,7 +1442,7 @@ unittest
     assert(vT.successor(1) == 2); 
     assert(vT.successor(75) == 88); 
     assert(vT.successor(90).isNull); 
-    assert(vT.successor!"[]"(90) == vT.expectedSize);
+    assert(vT.successor!"[]"(90) == vT.capacity);
     assert(!vT.member(1029)); 
     assert(vT.successor(1025).isNull);
     assert(vT.successor!"[]"(1025).isNull);
@@ -1718,7 +1697,7 @@ unittest
     auto f0Result = to!Duration(r[0]); 
     //auto f1Result = to!Duration(r[1]); 
     writeln("VEB: ", f0Result); //10ms
-    //writeln("rbt: ", f1Result); //40sec
+    writeln("rbt: ", f1Result); //40sec
     //assert(f0Result < f1Result); 
     //*/
 }
