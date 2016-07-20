@@ -61,7 +61,7 @@ import core.bitop; // used for bit operations
 import std.bitmanip; // used for bitfields 
 import std.traits; // used for generating the tree given an iterable
 
-private enum vdebug = false; 
+private enum vdebug = true; 
 
 version(unittest)
 {
@@ -145,10 +145,10 @@ version(unittest)
 enum baseSize = 8 * size_t.sizeof; 
 
 /**
-    the maxSize defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
+    the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
     changes dynamically with the architecture used. 
 */
-enum maxSize = size_t(1) << baseSize/2; 
+enum maxSizeBound = (size_t(1) << baseSize/2) + 1; 
 
 /// Convinience function to return the ceiling to the next power of two of the given input. 
 @nogc size_t nPof2(size_t value)
@@ -433,10 +433,10 @@ private struct VEBnode
         method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
         mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Nullable!(size_t, maxSize) min()
+    @property Nullable!(size_t, maxSizeBound) min()
     {
         // define the result as a nullable 
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         /*
             we have only a chance to get a value, if a value is present.
             if it is a leaf, handle the val as a bit array and find the first bit set from the right. 
@@ -460,7 +460,7 @@ private struct VEBnode
         else
         {
             // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSize); 
+            assert(value < maxSizeBound); 
             _min = value; 
         }
     }
@@ -469,10 +469,10 @@ private struct VEBnode
         method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
         vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Nullable!(size_t, maxSize) max()
+    @property Nullable!(size_t, maxSizeBound) max()
     {
         // define the result as a nullable
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         /*
             we have only a chance to get a value, if a value is present. 
             if it is a leaf, handle the val as a bit array and find the first bit set from the left. 
@@ -496,7 +496,7 @@ private struct VEBnode
         else
         {
             // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSize); 
+            assert(value < maxSizeBound); 
             _max = value; 
         }
     }
@@ -693,7 +693,7 @@ private struct VEBnode
         predecessor method. given a leaf, returns the previous set bit if exists, otherwise Nullable.null. Overloads by
         passing only one parameter, which is the bit number of interest.
     */
-    Nullable!(size_t, maxSize) predecessor(size_t bitNum)
+    Nullable!(size_t, maxSizeBound) predecessor(size_t bitNum)
     in
     {
         assert(isLeaf); 
@@ -701,7 +701,7 @@ private struct VEBnode
     }
     body
     {
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         
         if(!isNull && (bitNum != 0))
         {
@@ -715,7 +715,7 @@ private struct VEBnode
     //
     unittest
     {
-        const size_t currentSeed = 3163857753U; unpredictableSeed();
+        const size_t currentSeed = unpredictableSeed();
         static if(vdebug){write("uT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
         const size_t v = uniform(2U, testedSize, rndGenInUse); //set universe size to some integer. 
@@ -744,9 +744,9 @@ private struct VEBnode
         predecessor method. this method is called from class with a universe size given. It performs recursion calls
         until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
     */
-    Nullable!(size_t, maxSize) predecessor(size_t value, size_t uS)
+    Nullable!(size_t, maxSizeBound) predecessor(size_t value, size_t uS)
     {
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         
         if(uS <= baseSize) return predecessor(value); // if descended so far, do not use other functionality any more. 
         if(this.isNull) return retVal; // if this node is empty, no predecessor can be found here or deeper in the tree
@@ -783,7 +783,7 @@ private struct VEBnode
         successor method. given a leaf, returns the next set bit if exists, otherwise Nullable.null. Overloads by
         passing only one parameter, which is the bit number of interest.
     */
-    Nullable!(size_t, maxSize) successor(size_t bitNum)
+    Nullable!(size_t, maxSizeBound) successor(size_t bitNum)
     in
     {
         assert(isLeaf); 
@@ -791,7 +791,7 @@ private struct VEBnode
     }
     body
     {
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         
         if(!isNull && (bitNum + 1 < baseSize)) 
         {
@@ -831,9 +831,9 @@ private struct VEBnode
         successor method. this method is called from class with a universe size given. It performs recursion calls until
         the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
-    Nullable!(size_t, maxSize) successor(size_t value, size_t uS)
+    Nullable!(size_t, maxSizeBound) successor(size_t value, size_t uS)
     {
-        Nullable!(size_t, maxSize) retVal; 
+        Nullable!(size_t, maxSizeBound) retVal; 
         if(uS <= baseSize) return successor(value); // if descended so far, do not use other functionality any more. 
         if(this.isNull) return retVal; // if this node is empty, no successor can be found here or deeper in the tree
         if(value < this.min) return this.min; // if given value is less then the min, return the min as successor
@@ -911,28 +911,27 @@ class VEBtree
     in
     {
         assert(value > 1); 
-        assert(value <= maxSize);
+        assert(value < maxSizeBound);
     }
     body
     {
         // set the expected size to the passed value 
         expectedSize = value; 
-
         // delegate the creation of the nodes with the apropriate power of two of the needed universe size
         root = VEBnode(nPof2(expectedSize - 1)); 
 
-        assert(root.isNull);
+        assert(this.empty);
     }
     ///
     unittest
     {
-        auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
+        auto currentSeed = unpredictableSeed();
         static if(vdebug){write("UT: vT, __ctor.       "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(1U << size_t(1),testedSize, rndGenInUse);
         const VEBtree vT = new VEBtree(uS); 
-        assert(vT.root.isNull);
+        assert(vT.empty);
         if((uS & (uS - 1)) == 0)
             assert(vT.capacity == uS); 
         else
@@ -981,7 +980,7 @@ class VEBtree
     in
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
-        assert(range.length < maxSize);
+        assert(range.length < maxSizeBound);
     }
     body
     {
@@ -992,7 +991,7 @@ class VEBtree
         size_t limit; 
         foreach(size_t i; range) limit = max(limit,i); 
         // assert no element has exceeded the allowed range of baseSize/2
-        assert(limit < maxSize);
+        assert(limit < maxSizeBound);
         // if the array is longer, then the greatest element, but the length passes, substitute the limit
         limit = max(limit, range.length); 
         // call the constructor with the limit
@@ -1124,19 +1123,85 @@ class VEBtree
             }
             else 
             {
-                assert(!vT.member(i), "i: " ~ to!string(i)); //10481664, 8908800
+                assert(!vT.member(i), "i: " ~ to!string(i)); 
             }
         }
     }
         
     /// this method is used to determine the minimum of the tree
-    @property Nullable!(size_t, maxSize) min(){ return root.min; }
+    @property Nullable!(size_t, maxSizeBound) min(alias boundaries = "()")()
+    { 
+        auto currentMin = root.min; 
+        static if(boundaries[0] == '[')
+            if(!currentMin.isNull)
+                return currentMin; 
+            else
+                return Nullable!(size_t, maxSizeBound)(0); 
+        else
+            return currentMin; 
+    }
 
     /// this method is used to determine the maximum of the tree    
-    @property Nullable!(size_t, maxSize) max(){ return root.max; }
+    @property Nullable!(size_t, maxSizeBound) max(alias boundaries = "()")()
+    { 
+        auto currentMax = root.max; 
+        static if(boundaries[1] == ']')
+        {
+            if(!currentMax.isNull)
+                return currentMax; 
+            else
+                return Nullable!(size_t, maxSizeBound)(expectedSize); 
+        }
+        else return currentMax; 
+    }
 
     /// this method retrieves the successor of the given input.
-    Nullable!(size_t, maxSize) successor(size_t value) { return root.successor(value, capacity); }
+    Nullable!(size_t, maxSizeBound) successor(alias boundaries = "()")(size_t value)
+    {
+        // in case of closed boundaries
+        static if(boundaries[1] == ']')
+        {
+            // define an upper bound 
+            size_t upperBound;
+
+            // get current upper bound: 
+            // if there are values exceeding expected size, the closed boundary is the capacity 
+            if(!root.successor(expectedSize - 1, capacity).isNull)
+            {
+                // guard condition, if the value exceeds the closed boundary (capacity)
+                if(value >= capacity) return Nullable!(size_t, maxSizeBound)(); 
+                // if the guard holds assign the upper bound 
+                upperBound = capacity; 
+            }
+            else // if there are no values exceeding the expected size, the closed boundary is the expected size
+            {
+                // guard condition, if the value exceeds the closed boundary (expected size)
+                if(value >= expectedSize) return Nullable!(size_t, maxSizeBound)(); 
+                // if the guard holds assign the upper bound 
+                upperBound = expectedSize; 
+            }
+        }
+        else // in case of open boundaries 
+        {   
+            // check, whether the value exceeds the available capacity and return null, if it does
+            if(value >= capacity) return Nullable!(size_t, maxSizeBound)(); 
+        }
+        
+        // otherwise get the successor
+        auto currentSuccessor = root.successor(value, capacity); 
+        
+        // in case of closed boundaries
+        static if(boundaries[1] == ']')
+        {
+            // if there is a successor (between the value and the upper bound)
+            if(!currentSuccessor.isNull) // return the successor
+                return currentSuccessor; 
+            else // otherwise return the bound (expected size or capacity)
+                return Nullable!(size_t, maxSizeBound)(upperBound); 
+        }
+        else // in case of open boundaries return the successor (either null or an existent successor)
+            return currentSuccessor; 
+    }
     unittest
     {
         auto currentSeed = unpredictableSeed();
@@ -1145,6 +1210,11 @@ class VEBtree
          
         auto uS = uniform(allowedArraySize, testedSize, rndGenInUse);
         VEBtree vT = new VEBtree(uS); 
+
+        // testing the boundaries now: 
+        auto randomElement = uniform(allowedArraySize, uS); 
+        assert(vT.successor(randomElement).isNull);
+        assert(vT.successor!"[]"(randomElement) == vT.expectedSize);
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1183,7 +1253,18 @@ class VEBtree
     }
 
     /// this method retrieves the predecessor of the given input. 
-    Nullable!(size_t, maxSize) predecessor(size_t value) { return root.predecessor(value, capacity); }
+    Nullable!(size_t, maxSizeBound) predecessor(alias boundaries = "()")(size_t value)
+    {
+        auto currentPredecessor = root.predecessor(value, capacity); 
+        static if(boundaries[0] == '[')
+        {
+            if(!currentPredecessor.isNull)
+                return currentPredecessor; 
+            else 
+                return Nullable!(size_t, maxSizeBound)(0); 
+        }
+        else return currentPredecessor; 
+    }
     ///
     unittest
     {
@@ -1193,6 +1274,11 @@ class VEBtree
          
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
         VEBtree vT = new VEBtree(uS); 
+
+        // testing the boundaries now: 
+        auto randomElement = uniform(allowedArraySize, uS); 
+        assert(vT.predecessor(randomElement).isNull);
+        assert(vT.predecessor!"[]"(randomElement) == 0);
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1234,20 +1320,20 @@ class VEBtree
     }
 
     /// this method is used to determine, whether the tree is currently containing an element. 
-    @property bool empty() { return root.isNull; }
+    @property bool empty() const { return root.isNull; }
 
     /// this method returns the minimium. 
-    @property size_t front()
-    in { assert(!root.isNull); }
-    body { return root.min; }
+    @property size_t front(alias boundaries = "()")()
+    in { assert(!this.empty); }
+    body { return this.min!boundaries; }
 
     /// this method removes the minimum element
     void popFront(){ if(!empty) remove(min); }
 
     /// bidirectional range also needs
-    @property size_t back()
-    in { assert(!root.isNull); }
-    body { return root.max; }
+    @property size_t back(alias boundaries = "()")()
+    in { assert(!this.empty); }
+    body { return this.max!boundaries; }
     
     /// this method removes the maximum element 
     void popBack() { if(!empty) remove(max); }
@@ -1274,12 +1360,24 @@ class VEBtree
         if(!this.min.isNull)
             retArray[0] = this.min; 
         for(size_t i = 1; i < retArray.length; ++i)
-            retArray[i] = successor(retArray[i-1]); 
+        {
+            auto succ = successor(retArray[i-1]); 
+            if(!succ.isNull)
+            retArray[i] = succ; 
+        }
         return retArray; 
     }
-    /**
-        ditto
-    */
+
+    /// dollar operator overload. 
+    @property size_t opDollar()
+    {
+        if(!root.successor(expectedSize - 1, capacity).isNull)
+            return capacity;
+        else
+            return expectedSize; 
+    }
+
+    /// ditto
     auto opSlice(size_t a, size_t b)
     {
         size_t[] retArray; 
@@ -1306,6 +1404,15 @@ class VEBtree
         retArray.length = counter; 
         return retArray; 
     }
+
+    /**
+        this method serves as export of the tree to an array. () and [] is possible as template parameter to export the
+        boundaries, even if they are not present.
+    */
+    auto exportTree(alias boundaries = "()")()
+    {
+
+    }
     // (optional) todo: implement some kind of cool output as a graphViz pic, similiar to the graphs in Cormen. 
 }
 
@@ -1314,10 +1421,10 @@ unittest
 {
 
     VEBtree vT = new VEBtree(100); 
-    assert(vT.root.isNull);
+    assert(vT.empty);
     auto result = vT.insert(2); 
     assert(result); 
-    assert(!vT.root.isNull); 
+    assert(!vT.empty); 
     assert(vT.member(2));     
     VEBtree vT2 = vT.save(); 
     assert(vT2.member(2)); 
@@ -1334,6 +1441,7 @@ unittest
     VEBtree vT = new VEBtree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
+    assert(vT.min!"[]" == 0);
     assert(vT.insert(2)); 
     vT.insert(5);
     assert(!vT.member(8)); 
@@ -1348,15 +1456,17 @@ unittest
     assert(vT.predecessor(7) == 5); 
     assert(vT.predecessor(4) == 2); 
     assert(vT.predecessor(2).isNull); 
+    assert(vT.predecessor!"[]"(2) == 0); 
     assert(vT.successor(6) == 8); 
     assert(vT.successor(5) == 8); 
     assert(vT.successor(4) == 5); 
     assert(vT.successor(1) == 2); 
     assert(vT.successor(75) == 88); 
     assert(vT.successor(90).isNull); 
-    assert(!vT.member(1029)); 
+    assert(vT.successor!"[]"(90) == vT.expectedSize);
     assert(!vT.member(1029)); 
     assert(vT.successor(1025).isNull);
+    assert(vT.successor!"[]"(1025).isNull);
     
     auto vT2 = new VEBtree(500); 
     assert(vT2.empty); 
@@ -1367,6 +1477,15 @@ unittest
     assert(vT2.successor(40) == 50);
     assert(vT2.successor(50) == 500); 
     
+    vT2 = new VEBtree(500); 
+    assert(vT2.empty); 
+    vT2.insert(50); 
+    vT2.insert(500); 
+    assert(vT2.max == 500); 
+    assert(vT2.min == 50); 
+    assert(vT2.successor(40) == 50);
+    assert(vT2.successor(50) == 500); 
+
     /* about 20 seconds in debug mode. 
     auto vT3 = new VEBtree(uint.max);
     assert(vT3.insert(5)); 
@@ -1394,12 +1513,12 @@ unittest
     static if(vdebug){write("UT: rand, succ.       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     VEBtree vT = new VEBtree(M); //create the tree
     assert(vT.capacity == nPof2(M-1)); 
     const auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
     size_t n; 
-    Nullable!(size_t, maxSize) i = vT.max; 
+    Nullable!(size_t, maxSizeBound) i = vT.max; 
 
     // discover the thousend (or little less) values with the predecessor method
     while(!i.isNull)
@@ -1432,7 +1551,7 @@ unittest
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
     vT.fill(1000, rndGenInUse); //fill the tree with some values 
-    Nullable!(size_t, maxSize) i = vT.max; 
+    Nullable!(size_t, maxSizeBound) i = vT.max; 
     
     // remove all members beginning from the maximum
     bool result; 
@@ -1459,7 +1578,7 @@ unittest
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
     vT.fill(1000, rndGenInUse); //fill the tree with some values 
-    Nullable!(size_t, maxSize) i = vT.min;
+    Nullable!(size_t, maxSizeBound) i = vT.min;
     
     // remove all members beginning from the minimum
     bool result; 
@@ -1635,14 +1754,14 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: rand, opslice     "); writeln("seed: ", currentSeed);}  
+    static if(vdebug){write("UT: rand, opSlice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     VEBtree vT = new VEBtree(M); 
+
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
-    
     assert(setSymmetricDifference(vT[], sort(arr)).empty); 
 }
 
