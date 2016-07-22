@@ -107,7 +107,7 @@ version(unittest)
             auto x = uniform(0, vT.expectedSize, rndGenInUse);
             // the check for membership is done to add only on inserting to the counter, not just 
             // because visiting the the loop
-            if(!vT.member(x))
+            if(!(x in vT))
             {
                 vT.insert(x); 
                 ++n; 
@@ -126,7 +126,7 @@ version(unittest)
             auto x = uniform(0, vT.capacity - 1, rndGenInUse);
             // the check for membership is done to add only on inserting to the counter, not just 
             // because visiting the the loop
-            if(!vT.member(x))
+            if(!(x in vT))
             {
                 vT.insert(x); 
                 arr[n] = x; 
@@ -505,7 +505,7 @@ private struct VEBnode
         member method for the case universe size < base size. Overloads by passing only one parameter, which is
         the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
-    bool member(size_t bitnum)
+    bool opIn_r(size_t bitnum)
     in
     {
         // method inside the node defined on leafs only. 
@@ -518,7 +518,7 @@ private struct VEBnode
     unittest
     {
         auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-        static if(vdebug){write("UT: vN, member.       "); writeln("seed: ", currentSeed);} 
+        static if(vdebug){write("UT: vN, opIn_r.       "); writeln("seed: ", currentSeed);} 
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         const auto value = uniform(0U,size_t.max, rndGenInUse);
@@ -526,8 +526,8 @@ private struct VEBnode
         VEBnode vN = VEBnode(baseSize); 
         vN._val = value; 
         
-        if((vN._val & size_t(1) << bitNum) != 0 ) assert(vN.member(bitNum)); 
-        if((vN._val & size_t(1) << bitNum) == 0 ) assert(!vN.member(bitNum)); 
+        if((vN._val & size_t(1) << bitNum) != 0 ) assert(bitNum in vN); 
+        if((vN._val & size_t(1) << bitNum) == 0 ) assert(!(bitNum in vN)); 
     }
 
     /*
@@ -536,7 +536,7 @@ private struct VEBnode
     */
     bool member(size_t value, size_t uS)
     {
-        if(uS <= baseSize) return member(value); // do not use other functionality any more, if descended so far. 
+        if(uS <= baseSize) return (value in this); // do not use other functionality any more, if descended so far. 
 
         if(this.isNull) return false; // if an empty intermediate node is found, nothing is stored below it. 
         if(value == this.min || value == this.max) return true; // case of a single valued range. 
@@ -877,8 +877,8 @@ unittest
     assert(vN.isNull); 
     vN._val = 3; 
     assert(vN._min == 3);
-    assert(vN.member(1));
-    assert(!vN.member(2));
+    assert(1 in vN);
+    assert(!(2 in vN));
     assert(vN.isLeaf);
     assert(vN.ptrArr == null); 
     vN.nullify; 
@@ -1084,7 +1084,7 @@ class VEBtree
     }
 
     /// this method is used to determine, whether an element is currently present in the tree
-    bool member(size_t value)
+    bool opIn_r(size_t value)
     {
         if(value >= capacity) return false;
         return root.member(value, capacity); 
@@ -1117,11 +1117,11 @@ class VEBtree
         {
             if(sortedInserted.contains(i))
             {
-                assert(vT.member(i));
+                assert(i in vT);
             }
             else 
             {
-                assert(!vT.member(i), "i: " ~ to!string(i)); 
+                assert(!(i in vT), "i: " ~ to!string(i)); 
             }
         }
     }
@@ -1321,7 +1321,7 @@ class VEBtree
     {
         size_t[] retArray; 
         size_t currMin; 
-        if(this.member(a))
+        if(a in this)
             currMin = a; 
         else
             if(!this.successor(a).isNull)
@@ -1354,7 +1354,7 @@ class VEBtree
         auto exportLength = this.length; 
 
         static if(boundaries[0] == '[') 
-            if(!this.member(0)) // if zero is not in the tree and we want to include the left boundary, the export grows
+            if(!(0 in this)) // if zero is not in the tree and we want to include the left boundary, the export grows
                 ++exportLength; 
         static if(boundaries[1] == ']')
             ++exportLength; // we want to include the capacity as value, so the export grows 
@@ -1388,13 +1388,13 @@ unittest
     auto result = vT.insert(2); 
     assert(result); 
     assert(!vT.empty); 
-    assert(vT.member(2));     
+    assert(2 in vT);     
     VEBtree vT2 = vT.save(); 
-    assert(vT2.member(2)); 
+    assert(2 in vT2); 
     result = vT2.insert(3); 
     assert(result); 
-    assert(vT2.member(3)); 
-    assert(!vT.member(3));
+    assert(3 in vT2); 
+    assert(!(3 in vT));
     assert(vT2.length == 2);
     
 }
@@ -1423,13 +1423,13 @@ unittest
     assert(vT.min.isNull); 
     assert(vT.insert(2)); 
     vT.insert(5);
-    assert(!vT.member(8)); 
+    assert(!(8 in vT)); 
     assert(vT.insert(88));
-    assert(vT.member(88)); 
+    assert(88 in vT); 
     assert(vT.predecessor(4) == 2);
-    assert(!vT.member(8)); 
+    assert(!(8 in vT)); 
     assert(vT.insert(8)); 
-    assert(vT.member(8)); 
+    assert(8 in vT); 
     assert(vT.predecessor(75) == 8); 
     assert(vT.predecessor(90) == 88); 
     assert(vT.predecessor(7) == 5); 
@@ -1443,7 +1443,7 @@ unittest
     assert(vT.successor(75) == 88); 
     assert(vT.successor(90).isNull); 
     assert(vT.successor!"[]"(90) == vT.capacity);
-    assert(!vT.member(1029)); 
+    assert(!(1029 in vT)); 
     assert(vT.successor(1025).isNull);
     assert(vT.successor!"[]"(1025).isNull);
     
@@ -1472,17 +1472,17 @@ unittest
     assert(vT3.capacity == cast(ulong)uint.max + 1);
     //*/
     
-    assert(!vT.member(1029)); 
-    assert(!vT.member(865)); 
+    assert(!(1029 in vT)); 
+    assert(!(865 in vT)); 
     assert(vT.insert(865)); 
-    assert(vT.member(865)); 
+    assert(865 in vT); 
     assert(!vT.insert(865)); 
-    assert(vT.member(865)); 
-    assert(!vT.member(866)); 
+    assert(865 in vT); 
+    assert(!(866 in vT)); 
     assert(!vT.remove(866)); 
-    assert(vT.member(865)); 
+    assert(865 in vT); 
     assert(vT.remove(865)); 
-    assert(!vT.member(865)); 
+    assert(!(865 in vT)); 
 }
 
 ///
@@ -1609,26 +1609,26 @@ unittest
     const uint M = testedSize; 
     VEBtree vT = new VEBtree(M); 
     vT.insert(0xf000); 
-    assert(vT.member(0xf000)); 
+    assert(0xf000 in vT); 
     vT.insert(0x0f00); 
-    assert(vT.member(0x0f00)); 
+    assert(0x0f00 in vT); 
     vT.insert(0x00f0);
-    assert(vT.member(0x00f0)); 
+    assert(0x00f0 in vT);
     vT.insert(0x000f); 
-    assert(vT.member(0x000f)); 
+    assert(0x000f in vT); 
     
     auto result = vT.remove(0xf000); 
     assert(result); 
-    assert(!vT.member(0xf000)); 
+    assert(!(0xf000 in vT)); 
     result = vT.remove(0x0f00); 
     assert(result); 
-    assert(!vT.member(0x0f00)); 
+    assert(!(0x0f00 in vT)); 
     result = vT.remove(0x00f0); 
     assert(result); 
-    assert(!vT.member(0x00f0)); 
+    assert(!(0x00f0 in vT)); 
     result = vT.remove(0x000f); 
     assert(result); 
-    assert(!vT.member(0x000f)); 
+    assert(!(0x000f in vT)); 
 }
 
 /// 
@@ -1721,7 +1721,7 @@ unittest
     bool result; 
     foreach(uint i; uniqueArr)
     {
-        assert(vT.member(i)); 
+        assert(i in vT); 
         result = vT.remove(i); 
         assert(result); 
     }
