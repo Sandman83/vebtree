@@ -61,7 +61,7 @@ import core.bitop; // used for bit operations
 import std.bitmanip; // used for bitfields 
 import std.traits; // used for generating the tree given an iterable
 
-private enum vdebug = true; 
+private enum vdebug = false; 
 
 version(unittest)
 {
@@ -93,9 +93,6 @@ version(unittest)
     // during tests helping static arrays are used, which have an absolute maximum of size_t.sizeof * 2^20 elements
     enum allowedArraySize = 1 << size_t.sizeof; //(2 * size_t.sizeof + size_t.sizeof/2); 
     // choosed arbitrary, to avoid seg. faults
-
-    //an alternative method to calculate the amount of values contained in the tree. 
-    auto elementCount(VEBtree vT){ return vT[].length; }
 
     // some different filling functions for the tree. This simply tries to fill the tree with random numbers. Duplicates
     // will be ignored, the given tree is modified. 
@@ -151,7 +148,7 @@ enum baseSize = 8 * size_t.sizeof;
 enum maxSizeBound = (size_t(1) << baseSize/2) + 1; 
 
 /// Convinience function to return the ceiling to the next power of two of the given input. 
-@nogc size_t nPof2(size_t value)
+@nogc nothrow size_t nPof2(size_t value)
 in
 {
     assert(value != 0); 
@@ -178,7 +175,7 @@ unittest
     of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
     summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
-size_t hSR(size_t value) 
+@nogc nothrow size_t hSR(size_t value) 
 {
     return size_t(1) << (bsr(value)/2 + ((bsr(value) & 1) || ((value != 0) && (value & (value - 1))))); 
 }
@@ -203,7 +200,7 @@ unittest
     high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
     lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
-@nogc size_t lSR(size_t value) { return size_t(1) << (bsr(value)/2); }
+@nogc nothrow size_t lSR(size_t value) { return size_t(1) << (bsr(value)/2); }
 ///
 unittest
 {
@@ -224,7 +221,7 @@ unittest
 This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. It is a part of the ideal indexing function. 
 */
-private @nogc size_t high(size_t value, size_t uS) { return value >> (bsr(uS) / 2); }
+private @nogc nothrow size_t high(size_t value, size_t uS) { return value >> (bsr(uS) / 2); }
 //
 unittest
 {
@@ -242,7 +239,7 @@ unittest
 This is an index function defined as fmod(value, lSR(uS)). It is needed to find the appropriate
 value inside a cluster. It is part of the ideal indexing function
 */
-private @nogc size_t low(size_t value, size_t uS) { return value & ((size_t(1) << (bsr(uS) / 2)) - 1); }
+private @nogc nothrow size_t low(size_t value, size_t uS) { return value & ((size_t(1) << (bsr(uS) / 2)) - 1); }
 //
 unittest
 {
@@ -260,7 +257,7 @@ unittest
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
 relation holds: x = index(high(x), low(x)). This is the ideal indexing function of the tree. 
 */
-private @nogc size_t index(size_t uS, size_t x, size_t y){ return (x * lSR(uS) + y); }
+private @nogc nothrow size_t index(size_t uS, size_t x, size_t y){ return (x * lSR(uS) + y); }
 //
 unittest
 {
@@ -290,7 +287,7 @@ unittest
     of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
     level during an access. 
 */
-private struct VEBnode
+struct VEBnode
 {
     /*
         This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
@@ -298,8 +295,10 @@ private struct VEBnode
         property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
         an intermediate node. 
     */
-    VEBnode* ptrArr; // the first member behaves different, as the others, as it is the summary node. 
-    @property ref VEBnode summary()
+    private VEBnode* ptrArr; // the first member behaves different, as the others, as it is the summary node. 
+
+    /// property returning the summary node 
+    @nogc nothrow @property ref VEBnode summary()
     in { assert(!isLeaf); }
     body { return ptrArr[0]; }
     unittest
@@ -314,7 +313,8 @@ private struct VEBnode
         assert(vN.summary._val == 73);
     }
     
-    @property VEBnode* cluster()
+    /// property returning the cluster array 
+    @nogc nothrow @property VEBnode* cluster()
     in { assert(!isLeaf); }
     body { return (ptrArr + 1); }
     unittest
@@ -355,7 +355,7 @@ private struct VEBnode
             a tree large enough to contain these values. Due this fact the null-value for the Nullable is chosen to
             2^(8 * size_t.sizeof / 2)
         */
-        size_t _val;  
+        private size_t _val;  
         mixin(bitfields!(
             size_t, "_min", baseSize/2, // the default value of the min is greater then the max. 
             size_t, "_max", baseSize/2
@@ -368,7 +368,7 @@ private struct VEBnode
         may not appended beyond the knowledge of the constructor. 
     */
     @disable this(); 
-    /*
+    /**
         Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
         underlying value created and set to zero by default. 
         If otherwise create an array of children. This array has to be (according to Cormen) of size of higher square
@@ -420,20 +420,20 @@ private struct VEBnode
         }
     }
 
-    /* convinience method to check, if the node belongs to the lowest level in the tree */
-    @nogc @property bool isLeaf() const { return ptrArr == null; }
+    /** convinience method to check, if the node belongs to the lowest level in the tree */
+    @nogc nothrow @property bool isLeaf() const { return ptrArr == null; }
     
-    /* method to check whether the current node holds a value */
-    @nogc @property bool isNull() const { return isLeaf ? (_val == 0) : (_min > _max); }
+    /** method to check whether the current node holds a value */
+    @nogc nothrow @property bool isNull() const { return isLeaf ? (_val == 0) : (_min > _max); }
 
-    /* method executing the appropriate steps to nullify the current node */
-    @nogc @property void nullify() { _val = isLeaf ? 0 : 1; }  
+    /** method executing the appropriate steps to nullify the current node */
+    @nogc nothrow @property void nullify() { _val = isLeaf ? 0 : 1; }  
 
-    /*
+    /**
         method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
         mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Nullable!(size_t, maxSizeBound) min()
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) min()
     {
         // define the result as a nullable 
         Nullable!(size_t, maxSizeBound) retVal; 
@@ -447,10 +447,10 @@ private struct VEBnode
         return retVal;  
     }
 
-    /*
+    /**
         setter for the min, setting either the lowest bit or the min part of the value. 
     */
-    @property void min(size_t value)
+    @nogc nothrow @property void min(size_t value)
     {
         if(isLeaf)
         {
@@ -465,11 +465,11 @@ private struct VEBnode
         }
     }
 
-    /* 
+    /** 
         method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
         vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Nullable!(size_t, maxSizeBound) max()
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) max()
     {
         // define the result as a nullable
         Nullable!(size_t, maxSizeBound) retVal; 
@@ -483,10 +483,10 @@ private struct VEBnode
         return retVal;  
     }
 
-    /*
+    /**
         setter for the max, setting either the highest bit or the max part of the value. 
     */
-    @property void max(size_t value)
+    @nogc nothrow @property void max(size_t value)
     {
         if(isLeaf) 
         {
@@ -501,11 +501,11 @@ private struct VEBnode
         }
     }
 
-    /*
+    /**
         member method for the case universe size < base size. Overloads by passing only one parameter, which is
         the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
-    bool opIn_r(size_t bitnum)
+    @nogc nothrow bool opIn_r(size_t bitnum)
     in
     {
         // method inside the node defined on leafs only. 
@@ -530,11 +530,11 @@ private struct VEBnode
         if((vN._val & size_t(1) << bitNum) == 0 ) assert(!(bitNum in vN)); 
     }
 
-    /*
+    /**
         member method. this method is called from class with a universe size given. It performs recursion calls until
         the universe size is reduced to the base size. Then the overloaded member method is called. 
     */
-    bool member(size_t value, size_t uS)
+    @nogc nothrow bool member(size_t value, size_t uS)
     {
         if(uS <= baseSize) return (value in this); // do not use other functionality any more, if descended so far. 
 
@@ -550,11 +550,11 @@ private struct VEBnode
         return cluster[high(value, uS)].member(low(value, uS), lSR(uS)); 
     }
 
-    /*
+    /**
         insert method. given a leaf, sets the bit and returns, whether the bit was unset. Overloads by passing only one
         parameter, which is the bit number of interest.
     */
-    bool insert(size_t bitnum)
+    @nogc nothrow bool insert(size_t bitnum)
     in
     {
         // method inside the node defined on leafs only. 
@@ -564,11 +564,11 @@ private struct VEBnode
     }
     body { return bts(&_val, bitnum) == 0; }
 
-    /*
+    /**
         insert method. this method is called from class with a universe size given. It performs recursion calls untill
         the universe size is reduced to the base size. Then the overloaded insert method is called. 
     */
-    bool insert(size_t value, size_t uS)
+    @nogc nothrow bool insert(size_t value, size_t uS)
     {
         import std.algorithm.comparison : min, max;
         
@@ -614,11 +614,11 @@ private struct VEBnode
         return res;
     }
 
-    /*
+    /**
         remove method. given a leaf, remove the bit and returns, whether the bit was set. Overloads by passing only one
         parameter, which is the bit number of interest.
     */
-    bool remove(size_t bitnum)
+    @nogc nothrow bool remove(size_t bitnum)
     in
     {
         assert(isLeaf); 
@@ -626,11 +626,11 @@ private struct VEBnode
     }
     body { return btr(&_val, bitnum) != 0; }
 
-    /*
+    /**
         remove method. this method is called from class with a universe size given. It performs recursion calls untill
         the universe size is reduced to the base size. Then the overloaded remove method is called. 
     */
-    bool remove(size_t value, size_t uS)
+    @nogc nothrow bool remove(size_t value, size_t uS)
     {
         if(uS <= baseSize) return this.remove(value); // if descended so far, do not use other functionality any more. 
         if(this.isNull) return false; // if the current node is null, there is nothing to remove. 
@@ -689,11 +689,11 @@ private struct VEBnode
         return retVal; 
     }
 
-    /*
+    /**
         predecessor method. given a leaf, returns the previous set bit if exists, otherwise Nullable.null. Overloads by
         passing only one parameter, which is the bit number of interest.
     */
-    Nullable!(size_t, maxSizeBound) predecessor(size_t bitNum)
+    @nogc nothrow Nullable!(size_t, maxSizeBound) predecessor(size_t bitNum)
     in
     {
         assert(isLeaf); 
@@ -740,11 +740,11 @@ private struct VEBnode
         if(!found) assert(vN.predecessor(x).isNull); 
     }
 
-    /*
+    /**
         predecessor method. this method is called from class with a universe size given. It performs recursion calls
         until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
     */
-    Nullable!(size_t, maxSizeBound) predecessor(size_t value, size_t uS)
+    @nogc nothrow Nullable!(size_t, maxSizeBound) predecessor(size_t value, size_t uS)
     {
         Nullable!(size_t, maxSizeBound) retVal; 
         
@@ -779,11 +779,11 @@ private struct VEBnode
         return retVal; 
     }
 
-    /*
+    /**
         successor method. given a leaf, returns the next set bit if exists, otherwise Nullable.null. Overloads by
         passing only one parameter, which is the bit number of interest.
     */
-    Nullable!(size_t, maxSizeBound) successor(size_t bitNum)
+    @nogc nothrow Nullable!(size_t, maxSizeBound) successor(size_t bitNum)
     in
     {
         assert(isLeaf); 
@@ -827,11 +827,11 @@ private struct VEBnode
         if(!found) assert(vN.successor(x).isNull);
     }
 
-    /*
+    /**
         successor method. this method is called from class with a universe size given. It performs recursion calls until
         the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
-    Nullable!(size_t, maxSizeBound) successor(size_t value, size_t uS)
+    @nogc nothrow Nullable!(size_t, maxSizeBound) successor(size_t value, size_t uS)
     {
         Nullable!(size_t, maxSizeBound) retVal; 
         if(uS <= baseSize) return successor(value); // if descended so far, do not use other functionality any more. 
@@ -1003,13 +1003,13 @@ class VEBtree
         this method returns the capacity of the tree. It is equal to the next power of 2 regarding the size used at
         initialization. 
     */
-    size_t capacity() const { return nPof2(expectedSize - 1); }
+    @nogc nothrow size_t capacity() const { return nPof2(expectedSize - 1); }
     
     /**
         this method is used to add an element to the tree. duplicate values will be ignored. the class provides an
         intermediate layer between the caller and the contained root and enrichs the input by the stored size. 
     */
-    bool insert(size_t value)
+    @nogc nothrow bool insert(size_t value)
     {
         if(value >= capacity) return false; 
         const bool retVal = root.insert(value, capacity); 
@@ -1045,10 +1045,10 @@ class VEBtree
     }
 
     /// this method overrides the insert method to directly use arrays
-    void insert(R)(R arr) if(isIterable!R){ foreach(size_t i; arr) insert(i); }
+    @nogc nothrow void insert(R)(R arr) if(isIterable!R){ foreach(size_t i; arr) insert(i); }
 
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
-    bool remove(size_t value)
+    @nogc nothrow bool remove(size_t value)
     {
         const bool retVal = root.remove(value, capacity); 
         if(retVal) --_elementCount; 
@@ -1084,7 +1084,7 @@ class VEBtree
     }
 
     /// this method is used to determine, whether an element is currently present in the tree
-    bool opIn_r(size_t value)
+    @nogc nothrow bool opIn_r(size_t value)
     {
         if(value >= capacity) return false;
         return root.member(value, capacity); 
@@ -1127,10 +1127,10 @@ class VEBtree
     }
         
     /// this method is used to determine the minimum of the tree
-    @property Nullable!(size_t, maxSizeBound) min(){ return root.min; }
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) min(){ return root.min; }
 
     /// this method is used to determine the maximum of the tree    
-    @property Nullable!(size_t, maxSizeBound) max(){ return root.max; }
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) max(){ return root.max; }
 
     /// this method retrieves the successor of the given input.
     Nullable!(size_t, maxSizeBound) successor(alias boundaries = "()")(size_t value)
@@ -1199,7 +1199,7 @@ class VEBtree
     }
 
     /// this method retrieves the predecessor of the given input. 
-    Nullable!(size_t, maxSizeBound) predecessor(alias boundaries = "()")(size_t value)
+    @nogc nothrow Nullable!(size_t, maxSizeBound) predecessor(alias boundaries = "()")(size_t value)
     {
         auto currentPredecessor = root.predecessor(value, capacity); 
         static if(boundaries[0] == '[')
@@ -1266,10 +1266,10 @@ class VEBtree
     }
 
     /// this method is used to determine, whether the tree is currently containing an element. 
-    @property bool empty() const { return root.isNull; }
+    @nogc nothrow @property bool empty() const { return root.isNull; }
 
     /// this method returns the minimium. 
-    @property size_t front()
+    @nogc nothrow @property size_t front()
     in { assert(!this.empty); }
     body { return this.min; }
 
@@ -1277,23 +1277,39 @@ class VEBtree
     void popFront(){ if(!empty) remove(min); }
 
     /// bidirectional range also needs
-    @property size_t back()
+    @nogc nothrow @property size_t back()
     in { assert(!this.empty); }
     body { return this.max; }
     
     /// this method removes the maximum element 
-    void popBack() { if(!empty) remove(max); }
+    @nogc nothrow void popBack() { if(!empty) remove(max); }
     
     /// This method returns the amount of elements currently present in the tree.
-    @property size_t length()const { return _elementCount; }
+    @nogc nothrow @property size_t length()const { return _elementCount; }
     
-    
+    /+    
     /**
         forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
         to construct a new one via an array
     */
-    @property VEBtree save() { return new VEBtree(this[]); }
+    @property VEBtree save()
+    {
+        auto retVal = new VEBtree(this.capacity);
+        if(this.length != 0)
+        {
+            auto el = this.min; 
+            retVal.insert(el); 
+            for(size_t i; i < this.length - 1; ++i)
+            {
+                el = successor(el); 
+                retVal.insert(el);
+            }
+        }
+        return retVal; 
+    }
+    +/
     
+    /+
     /**
     opSlice operator to get the underlying array. 
     This is a draft version, as it uses the successor method of the class. So getting the underlying array is 
@@ -1312,10 +1328,12 @@ class VEBtree
         }
         return retArray; 
     }
+    +/
 
     /// dollar operator overload. 
-    @property size_t opDollar() { return capacity; }
+    @nogc nothrow @property size_t opDollar() { return capacity; }
 
+    /+
     /// ditto
     auto opSlice(size_t a, size_t b)
     {
@@ -1343,6 +1361,7 @@ class VEBtree
         retArray.length = counter; 
         return retArray; 
     }
+    +/
 
     /**
         this method serves as export of the tree to an array. () and [] is possible as template parameter to export the
@@ -1389,6 +1408,7 @@ unittest
     assert(result); 
     assert(!vT.empty); 
     assert(2 in vT);     
+    /*
     VEBtree vT2 = vT.save(); 
     assert(2 in vT2); 
     result = vT2.insert(3); 
@@ -1396,7 +1416,7 @@ unittest
     assert(3 in vT2); 
     assert(!(3 in vT));
     assert(vT2.length == 2);
-    
+    */
 }
 
 ///
@@ -1410,7 +1430,7 @@ unittest
     VEBtree vT = new VEBtree(M); //create the tree
     vT.fill(1000, rndGenInUse); 
 
-    assert(vT.exportTree == vT[]);
+    //assert(vT.exportTree == vT[]);
     assert(vT.exportTree!"[)"[0] == 0); 
     assert(vT.exportTree!"(]"[$-1] == vT.capacity); 
 }
@@ -1741,7 +1761,7 @@ unittest
 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
-    assert(setSymmetricDifference(vT[], sort(arr)).empty); 
+    //assert(setSymmetricDifference(vT[], sort(arr)).empty); 
 }
 
 ///
@@ -1758,11 +1778,11 @@ unittest
     const auto begin = 5; 
     const auto end = 100; 
     const auto filterRes = sort(arr).filter!(a => a >= begin && a < end).array;
-    assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
+    //assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
 }
 
 ///
-unittest { assert(isBidirectionalRange!VEBtree); }
+unittest { /*assert(isBidirectionalRange!VEBtree);*/ }
 
 ///
 unittest
@@ -1774,7 +1794,7 @@ unittest
     assert(result);
     result = vT.insert(10); 
     assert(result);
-    assert(vT[] == [2, 5, 10]); 
+    //assert(vT[] == [2, 5, 10]); 
 }
 
 ///
