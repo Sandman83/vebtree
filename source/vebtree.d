@@ -383,7 +383,7 @@ struct VEBnode
         which is passed on every call to the root node. In this way this, extern saved value has the role of being
         outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
     */
-    this(size_t uS)
+    nothrow this(size_t uS)
     {
         if(uS > baseSize)
         {
@@ -907,7 +907,7 @@ class VEBtree
         to construct a VEB tree the wished size has to be provided. However, the size should be greater then one and
         should not excess the maximum allowed size for the current architecture. 
     */
-    this(size_t value)
+    nothrow this(size_t value)
     in
     {
         assert(value > 1); 
@@ -976,7 +976,7 @@ class VEBtree
     }
     
     /// another possibility is to construct a VEB tree is by providing an array.
-    this(R)(R range) if(isIterable!R)
+    nothrow this(R)(R range) if(isIterable!R)
     in
     {
         // check, whether the range is not too long. I. e. expressable with an uint. 
