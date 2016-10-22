@@ -314,7 +314,7 @@ struct VEBnode
     }
     
     /// property returning the cluster array 
-    @nogc nothrow @property VEBnode* cluster()
+    @nogc nothrow @property inout(VEBnode*) cluster() inout
     in { assert(!isLeaf); }
     body { return (ptrArr + 1); }
     unittest
@@ -433,7 +433,7 @@ struct VEBnode
         method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
         mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @nogc nothrow @property Nullable!(size_t, maxSizeBound) min()
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) min() const
     {
         // define the result as a nullable 
         Nullable!(size_t, maxSizeBound) retVal; 
@@ -469,7 +469,7 @@ struct VEBnode
         method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
         vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @nogc nothrow @property Nullable!(size_t, maxSizeBound) max()
+    @nogc nothrow @property Nullable!(size_t, maxSizeBound) max() const
     {
         // define the result as a nullable
         Nullable!(size_t, maxSizeBound) retVal; 
@@ -505,7 +505,7 @@ struct VEBnode
         member method for the case universe size < base size. Overloads by passing only one parameter, which is
         the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
-    @nogc nothrow bool opIn_r(size_t bitnum)
+    @nogc nothrow bool opIn_r(size_t bitnum) const
     in
     {
         // method inside the node defined on leafs only. 
@@ -534,7 +534,7 @@ struct VEBnode
         member method. this method is called from class with a universe size given. It performs recursion calls until
         the universe size is reduced to the base size. Then the overloaded member method is called. 
     */
-    @nogc nothrow bool member(size_t value, size_t uS)
+    @nogc nothrow bool member(size_t value, size_t uS) const
     {
         if(uS <= baseSize) return (value in this); // do not use other functionality any more, if descended so far. 
 
@@ -899,10 +899,24 @@ class VEBtree
     private size_t _elementCount; 
     /// this member stores the initialization size, as it would be lost forever after initialization, otherwise
     immutable size_t expectedSize; 
+    /// this value tracks the total range of the tree to be able to move on it independent from its copies
+    private auto _range = iota(0UL); 
     
     /// default constructor of a VEB tree is disabled. 
     @disable this(); 
     
+    /**
+        a private constructor for the save method. Takes a VEBnode and capacity and sets the _range appropriate
+    */
+    private this(ref VEBnode root_, size_t expectedSize_, size_t elementCount_) @nogc 
+    {
+        root = root_; 
+        expectedSize = expectedSize_; 
+        _elementCount = elementCount_; 
+        if(root.isNull) this._range = iota(0UL); 
+        else this._range = iota(root.min.get, root.max.get + 1UL); 
+    }
+
     /**
         to construct a VEB tree the wished size has to be provided. However, the size should be greater then one and
         should not excess the maximum allowed size for the current architecture. 
@@ -1009,11 +1023,22 @@ class VEBtree
         this method is used to add an element to the tree. duplicate values will be ignored. the class provides an
         intermediate layer between the caller and the contained root and enrichs the input by the stored size. 
     */
-    @nogc nothrow bool insert(size_t value)
+    bool insert(size_t value) @nogc nothrow 
     {
         if(value >= capacity) return false; 
         const bool retVal = root.insert(value, capacity); 
-        if(retVal) ++_elementCount; 
+        if(retVal)
+        {
+            ++_elementCount; 
+
+            if(length == 1) _range = iota(value, value + 1UL); 
+            else
+            {
+                if(value < _range.front) _range = iota(value, _range.back + 1UL); 
+                if(value > _range.back) _range = iota(_range.front, value + 1UL); 
+            }
+            
+        } 
         return retVal; 
     }
     ///
@@ -1048,10 +1073,19 @@ class VEBtree
     @nogc nothrow void insert(R)(R arr) if(isIterable!R){ foreach(size_t i; arr) insert(i); }
 
     /// this method is used to remove elements from the tree. not existing values will be ignored. 
-    @nogc nothrow bool remove(size_t value)
+    bool remove(size_t value) @nogc nothrow 
     {
         const bool retVal = root.remove(value, capacity); 
-        if(retVal) --_elementCount; 
+        if(retVal)
+        {
+            --_elementCount;
+            if(length == 0) _range = iota(0UL);
+            else
+            {
+                if(value == _range.front) popFront(); 
+                if(value == _range.back) popBack(); 
+            }
+        } 
         return retVal; 
     }
     ///
@@ -1084,7 +1118,7 @@ class VEBtree
     }
 
     /// this method is used to determine, whether an element is currently present in the tree
-    @nogc nothrow bool opIn_r(size_t value)
+    @nogc nothrow bool opIn_r(size_t value) const 
     {
         if(value >= capacity) return false;
         return root.member(value, capacity); 
@@ -1266,48 +1300,51 @@ class VEBtree
     }
 
     /// this method is used to determine, whether the tree is currently containing an element. 
-    @nogc nothrow @property bool empty() const { return root.isNull; }
+    @nogc nothrow @property bool empty() const { return _range.empty; }
 
     /// this method returns the minimium. 
-    @nogc nothrow @property size_t front()
-    in { assert(!this.empty); }
-    body { return this.min; }
+    @nogc nothrow @property size_t front() { return _range.front; }
 
     /// this method removes the minimum element
-    void popFront(){ if(!empty) remove(min); }
+    void popFront() @nogc nothrow
+    { 
+        if(!empty)
+        {
+            auto s = successor(_range.front); 
+            if(s.isNull) _range = iota(maxSizeBound, _range.back + 1UL); 
+            else _range = iota(s.get, _range.back + 1UL); 
+        }
+    }
 
     /// bidirectional range also needs
-    @nogc nothrow @property size_t back()
-    in { assert(!this.empty); }
-    body { return this.max; }
+    @nogc nothrow @property size_t back() { return _range.back; }
     
     /// this method removes the maximum element 
-    @nogc nothrow void popBack() { if(!empty) remove(max); }
+    @nogc nothrow void popBack()
+    {
+        if(!empty)
+        {
+            auto p = predecessor(_range.back);
+            if(p.isNull) _range = iota(_range.front, 0UL); 
+            else _range = iota(_range.front, p.get + 1UL); 
+        }
+    }
     
+    /// Returns whether the element is in the tree 
+    size_t opIndex(size_t index) const @nogc nothrow { return index in this; }
+
     /// This method returns the amount of elements currently present in the tree.
-    @nogc nothrow @property size_t length()const { return _elementCount; }
+    @nogc nothrow @property size_t length() const { return _elementCount; }
     
-    /+    
     /**
         forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
         to construct a new one via an array
     */
     @property VEBtree save()
     {
-        auto retVal = new VEBtree(this.capacity);
-        if(this.length != 0)
-        {
-            auto el = this.min; 
-            retVal.insert(el); 
-            for(size_t i; i < this.length - 1; ++i)
-            {
-                el = successor(el); 
-                retVal.insert(el);
-            }
-        }
+        auto retVal = new VEBtree(this.root, this.expectedSize, this.length);
         return retVal; 
     }
-    +/
     
     /+
     /**
@@ -1389,7 +1426,7 @@ class VEBtree
 
         for(size_t i = 1; i < retArray.length; ++i)
         {
-            auto succ = successor!boundaries(retArray[i-1]); 
+            const auto succ = successor!boundaries(retArray[i-1]); 
             if(succ.isNull || succ == capacity) break; 
             retArray[i] = succ; 
         }
@@ -1404,7 +1441,7 @@ unittest
 {
     VEBtree vT = new VEBtree(100); 
     assert(vT.empty);
-    auto result = vT.insert(2); 
+    const auto result = vT.insert(2); 
     assert(result); 
     assert(!vT.empty); 
     assert(2 in vT);     
@@ -1767,22 +1804,9 @@ unittest
 ///
 unittest
 {
-    const uint currentSeed = unpredictableSeed(); 
-    static if(vdebug){write("UT: rand, opslice[].  "); writeln("seed: ", currentSeed);} 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
-    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = new VEBtree(M); 
-    size_t[] arr; 
-    vT.fill(arr, rndGenInUse, 16); 
-    const auto begin = 5; 
-    const auto end = 100; 
-    const auto filterRes = sort(arr).filter!(a => a >= begin && a < end).array;
-    //assert(setSymmetricDifference(filterRes, vT[begin..end]).empty); 
+    assert(isBidirectionalRange!VEBtree); 
+    assert(isRandomAccessRange!VEBtree); 
 }
-
-///
-unittest { /*assert(isBidirectionalRange!VEBtree);*/ }
 
 ///
 unittest
