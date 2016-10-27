@@ -60,13 +60,13 @@ import std.typecons; // used for Nullable
 import core.bitop; // used for bit operations 
 import std.bitmanip; // used for bitfields 
 import std.traits; // used for generating the tree given an iterable
+import std.range; 
 
 private enum vdebug = false; 
 
 version(unittest)
 {
     static if(vdebug){import std.stdio;}
-    import std.range; 
     import std.algorithm;
     import std.random; 
     import std.datetime; 
