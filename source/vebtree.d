@@ -891,7 +891,7 @@ unittest
     generated tree has the capacity of the next higher power of 2. Beyond this, it stores the root element, through
     which all accesses to the tree are managed. The tree implements also the interface for being a bidirectional range.
 */
-struct VEBtree
+class VEBtree
 {
     // the root element of the tree. 
     private VEBnode* root; 
@@ -940,7 +940,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(1U << size_t(1),testedSize, rndGenInUse);
-        const VEBtree vT = VEBtree(uS); 
+        const VEBtree vT = new VEBtree(uS); 
         assert(vT.empty);
         if((uS & (uS - 1)) == 0)
             assert(vT.capacity == uS); 
@@ -951,8 +951,8 @@ struct VEBtree
         
         const auto uS1 = uniform(1U << size_t(1),testedSize, rndGenInUse);
         const auto uSsmall = uniform(1U << size_t(1),baseSize, rndGenInUse);
-        VEBtree vT1 = VEBtree(uS1); 
-        const VEBtree vTsmall = VEBtree(uSsmall); 
+        VEBtree vT1 = new VEBtree(uS1); 
+        const VEBtree vTsmall = new VEBtree(uSsmall); 
 
         assert(vTsmall.root._val == 0);
         assert(vTsmall.root.ptrArr == null); 
@@ -1045,7 +1045,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-        VEBtree vT = VEBtree(uS); 
+        VEBtree vT = new VEBtree(uS); 
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1093,7 +1093,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
 
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-        VEBtree vT = VEBtree(uS); 
+        VEBtree vT = new VEBtree(uS); 
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1128,7 +1128,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
          
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-        VEBtree vT = VEBtree(uS); 
+        VEBtree vT = new VEBtree(uS); 
 
         size_t n; 
         uint[allowedArraySize] insertedVals;  
@@ -1186,7 +1186,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
          
         auto uS = uniform(allowedArraySize, testedSize, rndGenInUse);
-        VEBtree vT = VEBtree(uS); 
+        VEBtree vT = new VEBtree(uS); 
 
         // testing the boundaries now: 
         auto randomElement = uniform(allowedArraySize, uS); 
@@ -1250,7 +1250,7 @@ struct VEBtree
         rndGenInUse.seed(currentSeed); //initialize the random generator
          
         auto uS = uniform(allowedArraySize,testedSize, rndGenInUse);
-        VEBtree vT = VEBtree(uS); 
+        VEBtree vT = new VEBtree(uS); 
 
         // testing the boundaries now: 
         auto randomElement = uniform(allowedArraySize, uS); 
@@ -1339,7 +1339,7 @@ struct VEBtree
         forward range also needs save. This is a draft version of the save function, it uses the opslice of the struct
         to construct a new one via an array
     */
-    @property VEBtree save() { return  VEBtree(root, expectedSize, _elementCount, _range.save); }
+    @property VEBtree save() { return new VEBtree(root, expectedSize, _elementCount, _range.save); }
 
     /// dollar operator overload. 
     @nogc nothrow @property size_t opDollar() 
@@ -1358,7 +1358,7 @@ struct VEBtree
     /// Makes a deep copy of the current object. 
     VEBtree dup() const
     {
-        auto retVal = VEBtree(expectedSize); 
+        auto retVal = new VEBtree(expectedSize); 
      
         if(this.length == 0) return retVal; 
      
@@ -1411,7 +1411,7 @@ struct VEBtree
 ///
 unittest
 {
-    VEBtree vT = VEBtree(100); 
+    VEBtree vT = new VEBtree(100); 
     assert(vT.empty);
     const auto result = vT.insert(2); 
     assert(result); 
@@ -1438,7 +1438,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
-    VEBtree vT = VEBtree(M); //create the tree
+    VEBtree vT = new VEBtree(M); //create the tree
     vT.fill(1000, rndGenInUse); 
 
     //assert(vT.exportTree == vT[]);
@@ -1449,7 +1449,7 @@ unittest
 unittest
 {
     assert(!__traits(compiles,  VEBtree())); 
-    VEBtree vT = VEBtree(1000); 
+    VEBtree vT = new VEBtree(1000); 
     assert(vT.capacity == 1024); 
     assert(vT.min.isNull); 
     assert(vT.insert(2)); 
@@ -1524,7 +1524,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
-    VEBtree vT = VEBtree(M); //create the tree
+    VEBtree vT = new VEBtree(M); //create the tree
     assert(vT.capacity == nPof2(M-1)); 
     const auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
     size_t n; 
@@ -1559,7 +1559,7 @@ unittest
     static if(vdebug){write("UT: rand, pred        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.fill(1000, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSizeBound) i = vT.max; 
 
@@ -1586,7 +1586,7 @@ unittest
     static if(vdebug){write("UT: rand, remove      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.fill(1000, rndGenInUse); //fill the tree with some values 
     Nullable!(size_t, maxSizeBound) i = vT.min;
     
@@ -1610,7 +1610,7 @@ unittest
 unittest
 {
     const uint M = testedSize; 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
     vT.insert(0x00f0);
@@ -1638,7 +1638,7 @@ unittest
 unittest
 {
     const uint M = testedSize; 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
     vT.insert(0xf000); 
     assert(0xf000 in vT); 
     vT.insert(0x0f00); 
@@ -1672,13 +1672,13 @@ unittest
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
     size_t[] arr; 
     const auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
     assert(arr.length == howMuchFilled); 
     
-    VEBtree vT2 = VEBtree(M); 
+    VEBtree vT2 = new VEBtree(M); 
     
     assert(vT2.capacity == vT.capacity); 
     
@@ -1746,7 +1746,7 @@ unittest
     // generate a random array as the source for the tree
     for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     // constructor to test
-    VEBtree vT = VEBtree(sourceArr); 
+    VEBtree vT = new VEBtree(sourceArr); 
     // make the array values unique. 
     auto uniqueArr = sort(sourceArr).uniq;
     // check, that all values are filled 
@@ -1769,7 +1769,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    VEBtree vT = VEBtree(M); 
+    VEBtree vT = new VEBtree(M); 
 
     size_t[] arr; 
     vT.fill(arr, rndGenInUse, 16); 
@@ -1786,7 +1786,7 @@ unittest
 ///
 unittest
 {
-    VEBtree vT = VEBtree(14);
+    VEBtree vT = new VEBtree(14);
     auto result = vT.insert(2); 
     assert(result); 
     result = vT.insert(5); 
@@ -1881,7 +1881,7 @@ unittest
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    auto const vT = VEBtree(M); 
+    auto const vT = new VEBtree(M); 
     /*testing the range methods*/
     assert(vT.empty); 
     
@@ -1895,7 +1895,7 @@ unittest
 
     // constructor to test
 
-    auto vTnew = VEBtree(sourceArr); 
+    auto vTnew = new VEBtree(sourceArr); 
     assert(!vTnew.empty); 
     assert(vTnew.length == uniqueArr.length); 
     const auto vT2 = vTnew.save; 
