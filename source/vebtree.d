@@ -61,6 +61,7 @@ import core.bitop; // used for bit operations
 import std.bitmanip; // used for bitfields 
 import std.traits; // used for generating the tree given an iterable
 import std.range; 
+import std.math : nextPow2; 
 
 private enum vdebug = false; 
 
@@ -69,7 +70,7 @@ version(unittest)
     static if(vdebug){import std.stdio;}
     import std.algorithm;
     import std.random; 
-    import std.datetime; 
+    import std.datetime.stopwatch; 
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
     import std.math : sqrt; 
@@ -99,7 +100,7 @@ version(unittest)
     auto fill(ref VEBtree vT, size_t m, Random rndGenInUse)
     {
         size_t n; 
-        for(size_t i = 0; i < m; ++i)
+        for(size_t i; i < m; ++i)
         {
             auto x = uniform(0, vT.expectedSize, rndGenInUse);
             // the check for membership is done to add only on inserting to the counter, not just 
@@ -146,29 +147,6 @@ enum baseSize = 8 * size_t.sizeof;
     changes dynamically with the architecture used. 
 */
 enum maxSizeBound = (size_t(1) << baseSize/2) + 1; 
-
-/// Convinience function to return the ceiling to the next power of two of the given input. 
-@nogc nothrow size_t nPof2(size_t value)
-in
-{
-    assert(value != 0); 
-    assert(bsr(value) < baseSize - 1); 
-}
-body { return size_t(1) << (bsr(value) + 1); }
-///
-unittest
-{
-    const size_t currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: nPof2.            "); writeln("seed: ", currentSeed);} 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    
-    const auto pOfM = nPof2(M); 
-    assert((pOfM & (pOfM-1)) == 0); 
-    const auto check = powersOfTwo.until(nPof2(M), OpenRight.no).array; 
-    assert(M < check[$-1]); 
-    assert(M > check[$-2]);
-}
 
 /**
     This function returns the higher square root of the given input. It is needed in the initialization step 
@@ -229,7 +207,7 @@ unittest
     static if(vdebug){write("UT: high.             "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    const size_t U = nPof2(M); 
+    const size_t U = nextPow2(M); 
     const size_t x = uniform(0U, U, rndGenInUse); 
 
     assert(high(x,U) == x / lSR(U)); 
@@ -247,7 +225,7 @@ unittest
     static if(vdebug){write("UT: low.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    const size_t U = nPof2(M); 
+    const size_t U = nextPow2(M); 
     const size_t x = uniform(0U, U, rndGenInUse); 
 
     assert(low(x, U) == (x & (lSR(U) - 1)));
@@ -266,7 +244,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const size_t M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     
-    const size_t U = nPof2(M); 
+    const size_t U = nextPow2(M); 
     const size_t x = uniform(0U, U, rndGenInUse); 
     
     assert(index(U, high(x, U), low(x, U)) == x); 
@@ -928,7 +906,7 @@ class VEBtree
         // set the expected size to the passed value 
         expectedSize = value; 
         // delegate the creation of the nodes with the apropriate power of two of the needed universe size
-        root = new VEBnode(nPof2(expectedSize - 1)); 
+        root = new VEBnode(nextPow2(expectedSize - 1)); 
 
         assert(this.empty);
     }
@@ -1013,7 +991,7 @@ class VEBtree
         this method returns the capacity of the tree. It is equal to the next power of 2 regarding the size used at
         initialization. 
     */
-    @nogc nothrow size_t capacity() const { return nPof2(expectedSize - 1); }
+    @nogc nothrow size_t capacity() const { return nextPow2(expectedSize - 1); }
     
     /**
         this method is used to add an element to the tree. duplicate values will be ignored. the class provides an
@@ -1211,7 +1189,7 @@ class VEBtree
         assert(vT.min == sortedInserted.front); 
         size_t j; 
 
-        for(size_t i = 0; i <= testedSize; ++i)
+        for(size_t i; i <= testedSize; ++i)
         {
             const auto el = vT.successor(i); 
             
@@ -1525,7 +1503,7 @@ unittest
 
     const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     VEBtree vT = new VEBtree(M); //create the tree
-    assert(vT.capacity == nPof2(M-1)); 
+    assert(vT.capacity == nextPow2(M-1)); 
     const auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
     size_t n; 
     Nullable!(size_t, maxSizeBound) i = vT.max; 
@@ -1744,7 +1722,7 @@ unittest
     uint[] sourceArr; 
     sourceArr.length = M; 
     // generate a random array as the source for the tree
-    for(uint i = 0; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
+    for(uint i; i < M; i++) sourceArr[i] = uniform(0U, M, rndGenInUse); 
     // constructor to test
     VEBtree vT = new VEBtree(sourceArr); 
     // make the array values unique. 
@@ -1805,21 +1783,21 @@ unittest
     static if(vdebug){write("UT: stress test 2  "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    void fill16(){ VEBtree vT = VEBtree(1 << 16); }
-    void fill17(){ VEBtree vT = VEBtree(1 << 17); }
-    void fill18(){ VEBtree vT = VEBtree(1 << 18); }
-    void fill19(){ VEBtree vT = VEBtree(1 << 19); }    
-    void fill20(){ VEBtree vT = VEBtree(1 << 20); }
-    void fill21(){ VEBtree vT = VEBtree(1 << 21); }
-    void fill22(){ VEBtree vT = VEBtree(1 << 22); }
-    void fill23(){ VEBtree vT = VEBtree(1 << 23); }
-    void fill24(){ VEBtree vT = VEBtree(1 << 24); }
-    void fill25(){ VEBtree vT = VEBtree(1 << 25); }
-    void fill26(){ VEBtree vT = VEBtree(1 << 26); }
-    void fill27(){ VEBtree vT = VEBtree(1 << 27); }
-    void fill28(){ VEBtree vT = VEBtree(1 << 28); }
-    void fill29(){ VEBtree vT = VEBtree(1 << 29); }
-    void fill30(){ VEBtree vT = VEBtree(1 << 30); }
+    void fill16(){ VEBtree vT = new VEBtree(1 << 16); }
+    void fill17(){ VEBtree vT = new VEBtree(1 << 17); }
+    void fill18(){ VEBtree vT = new VEBtree(1 << 18); }
+    void fill19(){ VEBtree vT = new VEBtree(1 << 19); }    
+    void fill20(){ VEBtree vT = new VEBtree(1 << 20); }
+    void fill21(){ VEBtree vT = new VEBtree(1 << 21); }
+    void fill22(){ VEBtree vT = new VEBtree(1 << 22); }
+    void fill23(){ VEBtree vT = new VEBtree(1 << 23); }
+    void fill24(){ VEBtree vT = new VEBtree(1 << 24); }
+    void fill25(){ VEBtree vT = new VEBtree(1 << 25); }
+    void fill26(){ VEBtree vT = new VEBtree(1 << 26); }
+    void fill27(){ VEBtree vT = new VEBtree(1 << 27); }
+    void fill28(){ VEBtree vT = new VEBtree(1 << 28); }
+    void fill29(){ VEBtree vT = new VEBtree(1 << 29); }
+    void fill30(){ VEBtree vT = new VEBtree(1 << 30); }
     
     import std.stdio; 
     auto r = benchmark!(fill16, fill17, fill18, fill19, fill20, fill21, fill22, fill23, fill24, fill25, fill26, fill27,
@@ -1887,7 +1865,7 @@ unittest
     
     uint[] sourceArr; 
     sourceArr.length = uniform(2U, M, rndGenInUse); 
-    for(uint i = 0; i < sourceArr.length; i++)
+    for(uint i; i < sourceArr.length; i++)
         sourceArr[i] = uniform(0U, M, rndGenInUse); 
 
     sort(sourceArr); 
@@ -1907,5 +1885,5 @@ unittest
     /* Works. Duration in debug mode: about 35 seconds. 
     auto vTT = new VEBtree(maxSizeBound - 1); 
     assert(vTT.insert(42)); 
-    */
+    //*/
 }
