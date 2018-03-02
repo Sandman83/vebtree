@@ -62,6 +62,7 @@ import std.bitmanip; // used for bitfields
 import std.traits; // used for generating the tree given an iterable
 import std.range; 
 import std.math : nextPow2; 
+import core.stdc.limits : CHAR_BIT; 
 
 private enum vdebug = false; 
 
@@ -74,7 +75,7 @@ version(unittest)
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
     import std.math : sqrt; 
-    size_t[] powersOfTwo = iota(0, 8 * size_t.sizeof).map!(a => size_t(1) << a).array; 
+    size_t[] powersOfTwo = iota(0, CHAR_BIT * size_t.sizeof).map!(a => size_t(1) << a).array; 
     Random rndGenInUse; 
 
     // helping function for output a given value in binary representation
@@ -140,7 +141,7 @@ version(unittest)
     the baseSize defines the cutoff limit, where the node goes into the bit array mode. It is parametrized on the size
     of size_t and changes dynamically with the architecture used. 
 */
-enum baseSize = 8 * size_t.sizeof; 
+enum baseSize = CHAR_BIT * size_t.sizeof; 
 
 /**
     the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
@@ -935,7 +936,7 @@ class VEBtree
         assert(vTsmall.root._val == 0);
         assert(vTsmall.root.ptrArr == null); 
 
-        if(uS1 > 8 * size_t.sizeof)
+        if(uS1 > CHAR_BIT * size_t.sizeof)
         {
             assert(vT1.root._val == 1);
             assert(vT1.root.ptrArr != null); 
