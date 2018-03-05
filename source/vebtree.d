@@ -1279,7 +1279,7 @@ class VEBtree
     @nogc nothrow @property bool empty() const { return _range.empty; }
 
     /// this method returns the minimium. 
-    @nogc nothrow @property size_t front() { return _range.front; }
+    @nogc nothrow @property size_t front() const { return _range.front; }
 
     /// this method removes the minimum element
     void popFront() @nogc nothrow
@@ -1319,6 +1319,141 @@ class VEBtree
         to construct a new one via an array
     */
     @property VEBtree save() { return new VEBtree(root, expectedSize, _elementCount, _range.save); }
+
+    /**
+    find the end of the slice by finding the successor in the bit tree. if no successor found return the limit.
+    The limit is assumed to be smaller then the number given on creation. 
+    However, if a number larger then the expected size was inserted, the hard limit is the capacity of the tree. 
+    */
+    private size_t aMax(size_t i) const @nogc
+    {
+        immutable auto succ = successor(i);
+
+        if(succ.isNull)
+        {
+            if(max < expectedSize)
+            {
+                return expectedSize; 
+            }
+            else
+            {
+                return capacity;
+            }
+        }
+        else
+        {
+            return succ.get;
+        }
+    }
+
+    /**
+    find the beginning of the slice by finding the predecessor in the bit tree. If no predecessor is found, assume zero
+    as the first index. https://www.cs.utexas.edu/users/EWD/transcriptions/EWD08xx/EWD831.html
+    */
+    private size_t aMin(size_t i) const @nogc
+    {
+        if(opIn_r(i)) return i;
+        immutable auto pred = predecessor(i);
+        if(pred.isNull) return 0;
+        else return pred.get;
+    }
+
+    /**
+    prototype of an exporting function. For a proper save function, the undelying data structure has to be a bit array.
+    */
+    @property auto dump() const
+    {
+        struct Result(T)
+        {
+            private T _input; 
+            private size_t _current; 
+
+            this(T)(T input)
+            {
+                _input = input; 
+            }
+
+            void popFront()
+            {
+                if(this.empty)
+                {
+                    _current = 0; 
+                }
+                else
+                {
+                    _current = _input.aMax(_current); 
+                }
+            }
+
+            @property size_t front() const
+            {
+                assert(!empty, "Attempting to fetch the front of an empty polymers structure");   
+                auto m = _input.aMax(_current); 
+                assert(m > _current); 
+                return m - _current; 
+            }
+
+            @property bool empty() const
+            {
+                auto next = _input.aMax(_current);
+                
+                if(next < _input.expectedSize)
+                {
+                    return false; 
+                }
+                else if(next == _input.expectedSize)
+                {
+                    if(_input.expectedSize in _input) 
+                    {
+                        return false; 
+                    }
+                    else 
+                    {
+                        return true; 
+                    }
+                }
+                else
+                {
+                    if(next == _input.capacity)
+                    {
+                        return true; 
+                    }
+                    else
+                    {
+                        assert(next < _input.capacity); 
+                        return false; 
+                    }
+                }
+            }
+        }
+
+        return Result!(typeof(this))(this); 
+    }
+    ///
+    unittest
+    {
+        static if(vdebug){writeln("UT: vT, dump.   "); /*writeln("seed: ", currentSeed);*/} 
+
+        auto p = new VEBtree(100); 
+        assert(p.empty); 
+        p.insert(5); 
+        p.insert(100); 
+        assert(!p.empty); 
+        assert(p.successor(0) == 5); 
+        assert(p.successor(4) == 5); 
+        assert(p.successor(5) == 100); 
+        auto s = p.dump; 
+        static assert(isInputRange!(typeof(s)));
+
+        assert(s.front == 5); 
+        
+        s.popFront; 
+        
+        assert(!s.empty); 
+        assert(s.front == 95); 
+        s.popFront; 
+        assert(s.empty); 
+    }
 
     /**
     TODO: for a proper save function, more work has to be done: 
@@ -1407,7 +1542,7 @@ unittest
     assert(!vT.empty); 
     assert(2 in vT);     
     
-    VEBtree vT2 = vT.save(); 
+    auto vT2 = vT.save(); 
     auto const vT3 = vT.dup(); 
     assert(2 in vT2); 
     const result2 = vT2.insert(3); 
