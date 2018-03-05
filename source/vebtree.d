@@ -1320,6 +1320,16 @@ class VEBtree
     */
     @property VEBtree save() { return new VEBtree(root, expectedSize, _elementCount, _range.save); }
 
+    /**
+    TODO: for a proper save function, more work has to be done: 
+    Each node has to be modeled by a bitarray entry. 
+    The bitarray has to be defined inside a tree object. 
+    The needed overhead has to be stored inside the same bitarray. 
+    Therefore, the bitarray has to be allocated recursively AND contiguosly. 
+    Then, the save (and copy) routine can be formulated as bitcopy of the underlying bitarray, 
+    alowing to reconstruct the tree behaviour and content from the layout of the bitarray itself. 
+    */
+
     /// dollar operator overload. 
     @nogc nothrow @property size_t opDollar() 
     {
