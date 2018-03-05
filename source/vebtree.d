@@ -1395,7 +1395,7 @@ class VEBtree
 
             @property bool empty() const
             {
-                auto next = _input.aMax(_current);
+                const next = _input.aMax(_current);
                 
                 if(next < _input.expectedSize)
                 {
