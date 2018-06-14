@@ -1,55 +1,55 @@
 /**
-    Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
-    License: $(LINK2 https://opensource.org/licenses/MIT, MIT License).
-    Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gmail.com) 
+Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
+License: $(LINK2 https://opensource.org/licenses/MIT, MIT License).
+Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gmail.com) 
 */
 
 /**
-    This module implements a Van Emde Boas tree container.
-    The module is still a work in progress. So, if you find an error by chance, please let me know in any way.
-    The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size,
-    given an arbitrary size at the initialization. The tree can be used in two different modes: 
-    1. Tree contains keys only. Supported operations are 
-    inserting, deletion, membership testing, neighborhood searching. All queries are of order (lglg U), where U is the 
-    capacity of the tree, set on initialization. 
-    2. Tree contains keys and values. Additionally to the above operations the indexing operation is supported. It 
-    yields the pointer to a stored object, if the key is contained in the tree, otherwise null. 
-    For optimization purposes, the size limit is size_t.max/2 + 1. The tree was tested on 64- and 32-bit arch. 
-    So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
+This module implements a Van Emde Boas tree container.
+The module is still a work in progress. So, if you find an error by chance, please let me know in any way.
+The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size,
+given an arbitrary size at the initialization. The tree can be used in two different modes: 
+1. Tree contains keys only. Supported operations are 
+inserting, deletion, membership testing, neighborhood searching. All queries are of order (lglg U), where U is the 
+capacity of the tree, set on initialization. 
+2. Tree contains keys and values. Additionally to the above operations the indexing operation is supported. It 
+yields the pointer to a stored object, if the key is contained in the tree, otherwise null. 
+For optimization purposes, the size limit is size_t.max/2 + 1. The tree was tested on 64- and 32-bit arch. 
+So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
 */
 
 // (optional) todo: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
 
 /**
-    The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard
-    operations of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For
-    small amount of elements the overhead coming along with the structure take over. For example, for a universe size of
-    2^14 and 15872 insertion operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one
-    of the unittests shows. 
+The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard
+operations of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For
+small amount of elements the overhead coming along with the structure take over. For example, for a universe size of
+2^14 and 15872 insertion operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one
+of the unittests shows. 
 */
 
 /**
-    Be aware, the current container is intended to be used with keys. This implies, that the capacity, fixed on its
-    initialization has two meanings. As usual, it shows the maximum amount of elements the instanciated tree can keep.
-    But also, it states, that no value bigger then capacity - 1 exists in the tree. This, and the fact, that only
-    non-negative values can be used are infered from the term "key".
+Be aware, the current container is intended to be used with keys. This implies, that the capacity, fixed on its
+initialization has two meanings. As usual, it shows the maximum amount of elements the instanciated tree can keep.
+But also, it states, that no value bigger then capacity - 1 exists in the tree. This, and the fact, that only
+non-negative values can be used are infered from the term "key".
 */
 
 /**
-    See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
-    Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
+See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
+Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
 */
 
 /**
-    As an important optimization a bottom out technique is used to compactify the tree to the level of nodes, where bit
-    operations become possible. As a side effect, the optimization now relies on the underlying architecture. This leads
-    to the fact, that the maximum of elements which can be stored is 
-    2^16 on a 32-bit architecture and 
-    2^32 on a 64-bit architecture. 
-    This was intentionally chosen for two reasons: 
-    i) to keep the size of a single node also depending from the underlying architecture. 
-    ii) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
-    emulating bigger entities. 
+As an important optimization a bottom out technique is used to compactify the tree to the level of nodes, where bit
+operations become possible. As a side effect, the optimization now relies on the underlying architecture. This leads
+to the fact, that the maximum of elements which can be stored is 
+2^16 on a 32-bit architecture and 
+2^32 on a 64-bit architecture. 
+This was intentionally chosen for two reasons: 
+i) to keep the size of a single node also depending from the underlying architecture. 
+ii) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
+emulating bigger entities. 
 */
 
 module vebtree; 
@@ -64,9 +64,6 @@ import core.stdc.limits : CHAR_BIT;
 import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference; 
 
 private enum vdebug = true; 
-
-
-
 
 version(unittest)
 {
@@ -98,51 +95,26 @@ version(unittest)
     // during tests helping static arrays are used, which have an absolute maximum of size_t.sizeof * 2^20 elements
     enum allowedArraySize = 1 << size_t.sizeof; //(2 * size_t.sizeof + size_t.sizeof/2); 
     // choosed arbitrary, to avoid seg. faults
-    // up to 1 << 27 = 1 << (32 - bsf(sizeof(VEBroot!())))
-
-    
-    // Ditto. This method asserts, that a given filling percentage is achieved. 
-    /*
-    auto fill(T)(ref T vT, Random rndGenInUse, size_t fillPercentage = T.sizeof - 1)
-    {
-        size_t[] arr;
-        size_t n; 
-        arr.length = fillPercentage * vT.capacity/T.sizeof; 
-        while(n != fillPercentage * vT.capacity/T.sizeof)
-        {
-            auto x = uniform(0, vT.capacity - 1, rndGenInUse);
-            // the check for membership is done to add only on inserting to the counter, not just 
-            // because visiting the the loop
-            if(!(x in vT))
-            {
-                vT.insert(x); 
-                arr[n] = x; 
-                ++n; 
-            }
-        }
-
-        return arr; 
-
-        (vT.capacity - 1).iota.randomCover(rndGenInUse)[0 .. fillPercentage * vT.capacity/T.sizeof]
-            .tee!((i, el) => arr[i] = el)
-            .each!(el => vT.insert(el));
-        
-    }
-    */
+    /**
+    up to 1 << 27 = 1 << (32 - bsf(sizeof(VEBroot!()))) any capacity works for unit testing. 
+    */ 
 }
 
 /**
-    the baseSize defines the cutoff limit, where the node goes into the bit array mode. It is parametrized on the size
-    of size_t and changes dynamically with the architecture used. 
+the baseSize defines the cutoff limit, where the node goes into the bit array mode. It is parametrized on the size
+of size_t and changes dynamically with the architecture used. 
 */
 enum baseSize = CHAR_BIT * size_t.sizeof; 
 
 /**
-    the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
-    changes dynamically with the architecture used. 
+the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
+changes dynamically with the architecture used. 
 */
 enum maxSizeBound = size_t(1) << baseSize/2; // == uint.max + 1 on a 64-bit system
 
+/**
+The default response of a tree node on a key request is null. I. e. if a key is not contained, null is returned. 
+*/
 alias Response = Nullable!(size_t, maxSizeBound); 
 
 /// calculating the type, based on native type of the underlying system
@@ -173,9 +145,9 @@ enum size_t lowerMask = halfSizeT.max;
 enum size_t higherMask = (size_t.max ^ lowerMask); 
 
 /**
-    This function returns the higher square root of the given input. It is needed in the initialization step 
-    of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
-    summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
+This function returns the higher square root of the given input. It is needed in the initialization step 
+of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
+summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
 size_t hSR(size_t value) @nogc nothrow 
 {
@@ -198,9 +170,9 @@ unittest
 }
 
 /**
-    This function returns the lower square root of the given input. It is needed by the indexing functions
-    high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
-    lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
+This function returns the lower square root of the given input. It is needed by the indexing functions
+high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
+lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
 size_t lSR(size_t value) @nogc nothrow 
 {
@@ -235,7 +207,7 @@ do
 {
     return value >> (bsr(universe) / 2);
 }
-//
+///
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
@@ -261,7 +233,7 @@ do
 {
     return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
 }
-//
+///
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
@@ -274,7 +246,7 @@ unittest
     assert(low(U, x) == (x & (lSR(U) - 1)));
 }
 
-/*
+/**
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
 relation holds: x = index(high(x), low(x)). This is the ideal indexing function of the tree. 
 */
@@ -282,7 +254,7 @@ private size_t index(size_t universe, size_t x, size_t y) @nogc nothrow
 {
     return (x * lSR(universe) + y);
 }
-//
+///
 unittest
 {
     const size_t currentSeed = unpredictableSeed();
@@ -296,15 +268,7 @@ unittest
     assert(index(U, high(U, x), low(U, x)) == x); 
 }
 
-
-
-
-
-
-
-
-
-
+/// convenience method for initializing a van emde boas tree root. This is the default method to get a tree. 
 auto vebRoot(size_t universe)
 in
 {
@@ -314,56 +278,49 @@ do
 {
     return VEBroot!()(universe); 
 }
-unittest
-{
-    auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-    static if(vdebug){write("UT: vN, summary.      "); writeln("seed: ", currentSeed);} 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    auto vN = vebRoot(512); 
-    assert(!vN.isLeaf); 
-    *vN.ptrArr[0].val = 73; 
-    assert(*vN.summary.val == 73);
-}
-/*
-unittest
-{
-    auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-    static if(vdebug){write("UT: vN, cluster.      "); writeln("seed: ", currentSeed);} 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
+/**
+the public interface of the root is: 
 
-    const auto value = uniform!"[]"(2U, testedSize, rndGenInUse);
-    const auto place = uniform(0U,baseSize, rndGenInUse);
-    
-    auto vN = vebRoot(4096); 
-    *vN.ptrArr[place].val = value; 
-    assert(*vN.ptrArr[place].val == value); 
-    assert(*vN.cluster[place - 1].val == value); // the right place: it is the (place - 1) location of clusters
-    *vN.cluster[place].val = 73; 
-}
+front
+back
+opApply(size_t)
+(opApply(size_t, E))
+
+size_t capacity()
+size_t universe()
+size_t length() 
+
+
+dup
+(E* opIndex(key))
+(void opIndexAssign(value, key))
+VEBtree opIndex()
+VEBtree opCall()
+bool empty()
+put = insert(size_t key) 
+remove(size_t key)
+predecessor(size_t key)
+successor(size_t key)
+
+
+
+the public interface of the tree is: 
+
+front()
+popFront()
+back()
+popBack()
+(void opIndexAssign(value, key))
+
+
+(E* opIndex(size_t key))
+(void opIndex(auto ref E value, size_t key))
+empty()
+auto save()
+opEquals()
 */
-unittest
-{
-    auto currentSeed = unpredictableSeed(); 
-    static if(vdebug){write("UT: vN, __ctor.       "); writeln("seed: ", currentSeed);} 
-    rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    const auto uS = uniform!"[]"(2U, testedSize, rndGenInUse);
-    
-    const auto vN = vebRoot(uS);
-    if(uS <= baseSize)
-    {
-        assert(vN.isLeaf); 
-        assert(*vN.val == 0);
-        assert(vN.ptrArr == null); 
-    } 
-    else
-    {
-        assert(!vN.isLeaf); 
-        assert(*vN.val == 1);
-        assert(vN.ptrArr != null); 
-    }
-}
 //
 unittest
 {
@@ -371,13 +328,21 @@ unittest
     static if(vdebug){write("UT: vN, opIn_r.       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    const auto value = uniform(0U,size_t.max, rndGenInUse);
-    const auto bitNum = uniform(0U,baseSize, rndGenInUse);
+    const auto value = uniform(0U, size_t.max, rndGenInUse);
+    const auto bitNum = uniform(0U, baseSize, rndGenInUse);
     auto vN = vebRoot(baseSize); 
     *vN.val = value; 
     
-    if((*vN.val & size_t(1) << bitNum) != 0 ) assert(bitNum in vN); 
-    if((*vN.val & size_t(1) << bitNum) == 0 ) assert(!(bitNum in vN)); 
+    if((*vN.val & size_t(1) << bitNum) != 0 ) 
+    {
+        assert(bitNum in vN); 
+    }
+
+    if((*vN.val & size_t(1) << bitNum) == 0 )
+    {
+        assert(!(bitNum in vN)); 
+    } 
+    
 }
 //
 unittest
@@ -429,16 +394,28 @@ unittest
         }
     }
     if(!found) assert(vN.successor(x).isNull);
-}
-auto vebRoot(alias source)() if(isRandomAccessRange!(typeof(source)) && !isInfinite!(typeof(source)))
-{
-    return VEBroot!source(source.length); 
+    
 }
 
 auto vebRoot(T)(size_t universe)
 {
-    return VEBroot!(new T[universe])(universe); 
+    return VEBroot!T(universe); 
 }
+
+/*
+private auto vebRoot(alias source)(size_t universe)
+{
+    static if(!is(typeof(source) == typeof(null)))
+    {
+        assert(source.length == universe); 
+        return vebRoot!(source.dup)(universe); 
+    }
+    else
+    {
+        return vebRoot!(universe); 
+    }
+}
+*/
 /**
     This is the struct to represent a VEB tree node. As memebers it contains a value and a pointer to the children
     array. As the pointer does not know the size of the array, it has to be passed in all methods, which require an
@@ -454,16 +431,23 @@ auto vebRoot(T)(size_t universe)
     of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
     level during an access. 
 */
-struct VEBroot(alias source = null)
+struct VEBroot(T = void)
 {
     @property size_t capacity() const
     in
     {
-        assert(universe); 
+        assert(stats !is null); 
     }
     do
     {
-        return nextPow2(universe - 1); 
+        if(universe <= baseSize)
+        {
+            return baseSize; 
+        }
+        else
+        {
+            return universe.nextPow2; 
+        }
     }
 
     @property size_t universe() const
@@ -504,6 +488,29 @@ struct VEBroot(alias source = null)
         }
 
         return result;
+    }
+
+    static if(!is(T == void))
+    {
+        /**
+        opApply method in case of present source for iterating over key value pairs
+        */
+        int opApply(scope int delegate(ref size_t, ref T) @nogc operations) @nogc
+        {
+            int result; 
+        
+            for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
+            {
+                result = operations(leading.get, *(dataArr[leading.get])); 
+
+                if(result)
+                {
+                    break; 
+                }
+            }
+
+            return result;
+        }
     }
 
     /**
@@ -565,45 +572,37 @@ struct VEBroot(alias source = null)
 
     typeof(this) dup()
     {
-        
-        //import std.range; 
         auto copy = this;
         copy.stats = new size_t(); 
         copy.val = new size_t();  
         *copy.stats = *this.stats;
         *copy.val = *this.val; 
-        copy.ptrArr = this.ptrArr.dup; 
-        /*
-        foreach(ref n; copy.ptrArr)
+        if(isLeaf)
         {
-            n = n.dup; 
+            copy.dataArr = this.dataArr[0 .. baseSize].dup.ptr; 
         }
-        */
-        copy.ptrArr.each!((ref n) => n = n.dup);
-        return copy; 
+        else
+        {
+            copy.ptrArr = this.ptrArr[0 .. hSR(universe.nextPow2) + 1].dup.ptr;
+            copy.dataArr = this.dataArr[0 .. 2].dup.ptr; 
+
+            copy.ptrArr[0 .. hSR(universe.nextPow2) + 1].each!((ref n) => n = n.dup);
+        }
+        
+        return copy;
     }
 
-    static if(!is(typeof(source) == typeof(null)))
+    static if(!is(T == void))
     {
-        auto ref opIndex(size_t key)
+        auto ref opIndex(size_t key) @nogc
         {
-            /*
-            if(key in this)
-            {
-                return &source[key];
-            }
-            else
-            {
-                return null; 
-            }
-            */
-            assert(0); 
+            return dataArr[key];
         }
 
-        void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!source))
+        void opIndexAssign(E)(ref E val, size_t key) if(is(E == ElementType!source))
         {
             insert(key); 
-            source[key] = val; 
+            dataArr[key] = &val; 
         }
     }
 
@@ -616,137 +615,10 @@ struct VEBroot(alias source = null)
     {
         return VEBtree!(No.inclusive, typeof(this))(this);  
     }
-    private: 
-    /*
-        This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
-        array can not be used to calculate the most of operations, so no explicit array is needed. The only remaining
-        property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
-        an intermediate node. // the first member behaves different, as the others, as it is the summary node. 
+
+    /** 
+    method to check whether the current node holds a value
     */
-    typeof(this)[] ptrArr; 
-    // contains max and min, or the bit array of keys
-    size_t* val;
-    // contains universe size and the current length
-    size_t* stats; 
-    
-    // property returning the summary node 
-    @property ref inout(typeof(this)) summary() inout // @nogc nothrow 
-    in
-    {
-        assert(!isLeaf);
-    }
-    do
-    {
-        return ptrArr[0];
-    }
-    
-    // property returning the cluster array 
-    @property inout(typeof(this)[]) cluster() inout // @nogc nothrow 
-    in
-    {
-        assert(!isLeaf);
-    }
-    do
-    {
-        return ptrArr[1 .. $];
-    }
-    
-    @property void universe(size_t input)
-    in
-    {
-        assert(stats !is null); 
-        assert(input < maxSizeBound);
-    }
-    do
-    {
-        *stats = *stats & lowerMask; 
-        *stats = *stats | (input << (size_t.sizeof * CHAR_BIT/2));
-    }
-
-    @property void length(size_t input)
-    in
-    {
-        assert(stats !is null); 
-        assert(input < maxSizeBound);
-    }
-    do
-    {
-        *stats = *stats & higherMask; 
-        *stats = *stats | input; 
-    }
-
-    @property size_t capacity()
-    in
-    {
-        assert(stats !is null); 
-    }
-    do
-    {
-        if(universe <= baseSize)
-        {
-            return baseSize; 
-        }
-        else
-        {
-            return universe.nextPow2; 
-        }
-    }
-
-    /**
-        Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
-        underlying value created and set to zero by default. 
-        If otherwise create an array of children. This array has to be (according to Cormen) of size of higher square
-        root of the current universe size + 1. The extra place is reserved for the summary. 
-        For each just created child call its constructor.
-        For the summary with the universe size of the higher square root of the current universe size. 
-        For each other child with the universe size of the lower square root of the currennt universe size. 
-        Then, assign the fully initialized children array to the pointer in the current node, doing approprate steps to
-        show, that this node is an intermediate node, not containing any values yet. 
-        The knowledge of the current universe size is lost at this moment. As this keeps every build up node smaller 
-        (and there could be a lot of them). This is why, the VEBtree class continues to hold the global universe size,
-        which is passed on every call to the root node. In this way this, extern saved value has the role of being
-        outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
-    */
-    this(size_t uS) // nothrow 
-    {
-        stats = new size_t(); 
-        val = new size_t(); 
-
-        universe = uS; 
-
-        if(universe > baseSize)
-        {
-            // reserve enough place for the summary and the children cluster
-            ptrArr.length = hSR(universe.nextPow2) + 1; 
-            // add the summary with its universe of higher squaure root of the current universe
-            summary = typeof(this)(hSR(universe.nextPow2)); 
-            assert(ptrArr[0].universe == hSR(universe.nextPow2));
-            // add higher square root children with lower square root universe each.
-            cluster.each!((ref el) => el = typeof(this)(lSR(universe.nextPow2)));
-            ptrArr[1 .. $].each!((ref el) => assert(el.universe == lSR(universe.nextPow2)));
-            nullify; // set the value to the sentinel value to represent the empty state. 
-        }
-        // else nothing todo.
-    }
-
-    /** convinience method to check, if the node belongs to the lowest level in the tree */
-    @property bool isLeaf() const // @nogc nothrow 
-    in
-    {
-        assert(stats !is null); 
-    }
-    do
-    {
-        debug
-        {
-            ptrArr.length ? assert(universe > baseSize) : assert(universe <= baseSize);
-            universe <= baseSize ? assert(!ptrArr.length) : assert(ptrArr.length);
-        }
-
-        return universe <= baseSize;
-    }
-    
-    /** method to check whether the current node holds a value */
     @property bool empty() const // @nogc nothrow 
     in
     {
@@ -764,61 +636,13 @@ struct VEBroot(alias source = null)
         }
     }
 
-    /** method executing the appropriate steps to nullify the current node */
-    @property void nullify() // @nogc nothrow 
-    in
-    {
-        assert(val !is null); 
-    }
-    do
-    {
-        *val = isLeaf ? 0 : 1;
-    }  
-
     /**
-    setter for the min, setting either the lowest bit or the min part of the value. 
-    */
-    @property void front(size_t value) // @nogc nothrow 
-    {
-        if(isLeaf)
-        {
-            assert(front > value);
-            insert(value); 
-        }
-        else
-        {
-            // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSizeBound);
-            *val = *val & higherMask;
-            *val = *val | value;
-        }
-    }
-
-    /**
-    setter for the max, setting either the highest bit or the max part of the value. 
-    */
-    @property void back(size_t value) // @nogc nothrow 
-    {
-        if(isLeaf) 
-        {
-            assert(back < value); 
-            insert(value); 
-        }
-        else
-        {
-            // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSizeBound); 
-            *val = *val & lowerMask; 
-            *val = *val | (value << (size_t.sizeof * CHAR_BIT/2));
-        }
-    }
-
-    /**
-        member method for the case universe size < base size. Overloads by passing only one parameter, which is
-        the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
+    member method for the case universe size < base size. Overloads by passing only one parameter, which is
+    the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
     bool opBinaryRight(string op)(size_t key) inout if(op == "in")  // @nogc nothrow 
     {
+        assert(universe); 
         if(key > universe.nextPow2)
         {
             return false; 
@@ -840,7 +664,7 @@ struct VEBroot(alias source = null)
             {
                 return true; 
             }
-
+            
             /*
                 else we have to descend, using the recursive indexing: 
                 1. take the high(value, uS)-th child and 
@@ -853,24 +677,10 @@ struct VEBroot(alias source = null)
         }
     }
 
-    size_t low(size_t value) const @nogc nothrow
-    {
-        return .low(universe.nextPow2, value); 
-    }
-
-    size_t high(size_t value) const @nogc nothrow 
-    {
-        return .high(universe.nextPow2, value); 
-    }
-
-    size_t index(size_t x, size_t y) const @nogc nothrow 
-    {
-        return .index(universe.nextPow2, x, y); 
-    }
-
+    alias put = insert; 
     /**
-        insert method. this method is called from class with a universe size given. It performs recursion calls untill
-        the universe size is reduced to the base size. Then the overloaded insert method is called. 
+    insert method. this method is called from class with a universe size given. It performs recursion calls untill
+    the universe size is reduced to the base size. Then the overloaded insert method is called. 
     */
     bool insert(size_t value) // @nogc nothrow 
     {
@@ -953,8 +763,8 @@ struct VEBroot(alias source = null)
     }
 
     /**
-        remove method. this method is called from class with a universe size given. It performs recursion calls untill
-        the universe size is reduced to the base size. Then the overloaded remove method is called. 
+    remove method. this method is called from class with a universe size given. It performs recursion calls untill
+    the universe size is reduced to the base size. Then the overloaded remove method is called. 
     */
     bool remove(size_t value) // @nogc nothrow 
     {
@@ -1051,8 +861,8 @@ struct VEBroot(alias source = null)
     }
 
     /**
-        predecessor method. this method is called from class with a universe size given. It performs recursion calls
-        until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
+    predecessor method. this method is called from class with a universe size given. It performs recursion calls
+    until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
     */
     Response predecessor(size_t value) const // @nogc nothrow
     {
@@ -1119,8 +929,8 @@ struct VEBroot(alias source = null)
     }
 
     /**
-        successor method. this method is called from class with a universe size given. It performs recursion calls until
-        the universe size is reduced to the base size. Then the overloaded successor method is called. 
+    successor method. this method is called from class with a universe size given. It performs recursion calls until
+    the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
     Response successor(size_t value) const @nogc nothrow 
     {
@@ -1168,11 +978,203 @@ struct VEBroot(alias source = null)
         }
         return retVal; 
     }
+
+    private: 
+    /*
+        This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
+        array can not be used to calculate the most of operations, so no explicit array is needed. The only remaining
+        property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
+        an intermediate node. // the first member behaves different, as the others, as it is the summary node. 
+    */
+    typeof(this)* ptrArr; 
+    T** dataArr; 
+    // contains max and min, or the bit array of keys
+    size_t* val;
+    // contains universe size and the current length
+    size_t* stats; 
+    
+    // property returning the summary node 
+    @property auto ref summary() inout // @nogc nothrow 
+    in
+    {
+        assert(!isLeaf);
+    }
+    do
+    {
+        return ptrArr[0];
+    }
+    
+    // property returning the cluster array 
+    @property auto ref cluster() inout // @nogc nothrow 
+    in
+    {
+        assert(!isLeaf);
+    }
+    do
+    {
+        return ptrArr[1 .. hSR(universe.nextPow2) + 1];
+    }
+    
+    @property void universe(size_t input)
+    in
+    {
+        assert(stats !is null); 
+        assert(input < maxSizeBound);
+    }
+    do
+    {
+        *stats = *stats & lowerMask; 
+        *stats = *stats | (input << (size_t.sizeof * CHAR_BIT/2));
+    }
+
+    @property void length(size_t input)
+    in
+    {
+        assert(stats !is null); 
+        assert(input < maxSizeBound);
+    }
+    do
+    {
+        *stats = *stats & higherMask; 
+        *stats = *stats | input; 
+    }
+
+    /**
+    Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
+    underlying value created and set to zero by default. 
+    If otherwise create an array of children. This array has to be (according to Cormen) of size of higher square
+    root of the current universe size + 1. The extra place is reserved for the summary. 
+    For each just created child call its constructor.
+    For the summary with the universe size of the higher square root of the current universe size. 
+    For each other child with the universe size of the lower square root of the currennt universe size. 
+    Then, assign the fully initialized children array to the pointer in the current node, doing approprate steps to
+    show, that this node is an intermediate node, not containing any values yet. 
+    The knowledge of the current universe size is lost at this moment. As this keeps every build up node smaller 
+    (and there could be a lot of them). This is why, the VEBtree class continues to hold the global universe size,
+    which is passed on every call to the root node. In this way this, extern saved value has the role of being
+    outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
+    */
+    this(size_t uS) // nothrow 
+    {
+        stats = new size_t(); 
+        val = new size_t(); 
+
+        universe = uS; 
+
+        T*[] tmpDataArr;
+        assert(stats !is null); 
+        if(universe > baseSize)
+        {
+            // reserve enough place for the summary and the children cluster
+            typeof(this)[] tmpArr; 
+            assert(stats !is null); 
+            tmpArr.length = hSR(universe.nextPow2) + 1; 
+            ptrArr = tmpArr.ptr;
+
+            tmpDataArr.length = 2; 
+
+            // add the summary with its universe of higher squaure root of the current universe
+            assert(stats !is null); 
+            summary = typeof(this)(hSR(universe.nextPow2)); 
+            assert(stats !is null); 
+            assert(ptrArr[0].stats !is null); 
+            assert(ptrArr[0].universe == hSR(universe.nextPow2));
+            // add higher square root children with lower square root universe each.
+            assert(stats !is null); 
+
+            cluster.each!((ref el) => el = typeof(this)(lSR(universe.nextPow2)));
+            assert(stats !is null); 
+            ptrArr[1 .. hSR(universe.nextPow2) + 1].each!((ref el) => assert(el.universe == lSR(universe.nextPow2)));
+            nullify; // set the value to the sentinel value to represent the empty state. 
+        }
+        else
+        {
+            tmpDataArr.length = baseSize; 
+        }
+        dataArr = tmpDataArr.ptr; 
+        // else nothing todo.
+    }
+
+    /** convinience method to check, if the node belongs to the lowest level in the tree */
+    @property bool isLeaf() const // @nogc nothrow 
+    in
+    {
+        assert(stats !is null); 
+    }
+    do
+    {
+        return universe <= baseSize;
+    }
+
+    /** method executing the appropriate steps to nullify the current node */
+    @property void nullify() // @nogc nothrow 
+    in
+    {
+        assert(val !is null); 
+    }
+    do
+    {
+        *val = isLeaf ? 0 : 1;
+    }  
+
+    /**
+    setter for the min, setting either the lowest bit or the min part of the value. 
+    */
+    @property void front(size_t value) // @nogc nothrow 
+    {
+        if(isLeaf)
+        {
+            assert(front > value);
+            insert(value); 
+        }
+        else
+        {
+            // the passed value should not exceed the allowed size of a size/2
+            assert(value < maxSizeBound);
+            *val = *val & higherMask;
+            *val = *val | value;
+        }
+    }
+
+    /**
+    setter for the max, setting either the highest bit or the max part of the value. 
+    */
+    @property void back(size_t value) // @nogc nothrow 
+    {
+        if(isLeaf) 
+        {
+            assert(back < value); 
+            insert(value); 
+        }
+        else
+        {
+            // the passed value should not exceed the allowed size of a size/2
+            assert(value < maxSizeBound); 
+            *val = *val & lowerMask; 
+            *val = *val | (value << (size_t.sizeof * CHAR_BIT/2));
+        }
+    }
+
+    size_t low(size_t value) const @nogc nothrow
+    {
+        return .low(universe.nextPow2, value); 
+    }
+
+    size_t high(size_t value) const @nogc nothrow 
+    {
+        return .high(universe.nextPow2, value); 
+    }
+
+    size_t index(size_t x, size_t y) const @nogc nothrow 
+    {
+        return .index(universe.nextPow2, x, y); 
+    }
 }
 
 ///
 unittest
 {
+    
     auto vN = vebRoot(baseSize); 
     assert(vN.empty); 
     static assert(vN.sizeof == 4 * size_t.sizeof); 
@@ -1187,11 +1189,13 @@ unittest
     vN.nullify; 
     assert(vN.empty); 
     assert(*vN.val == 0); 
+    
 }
 
 ///
 unittest
 {
+    
     auto vT = vebRoot(100); 
     assert(vT.empty);
     const auto result = vT.insert(2); 
@@ -1212,11 +1216,13 @@ unittest
     assert(3 in vT);
     assert(!(3 in vT3));
     assert(vT2.length == 2);
+    
 }
 
 ///
 unittest
 {
+    
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: vT, exportTree.   "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
@@ -1225,10 +1231,9 @@ unittest
     auto vT = vebRoot(M); //create the tree
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     
-
-    //TODO: uncomment
-    //assert(vT[].front == 0); 
-    //assert(vT[].back == vT.universe); 
+    assert(vT[].front == 0); 
+    assert(vT[].back == vT.universe); 
+    
 }
 ///
 unittest
@@ -1249,10 +1254,13 @@ unittest
     assert(vT.predecessor(75) == 8); 
     
     assert(vT.predecessor(90) == 88); 
+    
     assert(vT.predecessor(7) == 5); 
     assert(vT.predecessor(4) == 2); 
     assert(vT.predecessor(2).isNull); 
-    // TODO: assert this with the tree object assert(vT.predecessor(2) == 0); 
+    
+    //TODO: reactivate this by slicing assert(vT[].predecessor(2) == 0); 
+    
     assert(vT.predecessor(2).isNull); 
     
     assert(vT.successor(6) == 8); 
@@ -1262,7 +1270,7 @@ unittest
     assert(vT.successor(1) == 2); 
     assert(vT.successor(75) == 88); 
     assert(vT.successor(90).isNull); 
-    // TODO: assert this with the tree object assert(vT.successor(90) == vT.capacity);
+    //TODO: reactivate this by slicing assert(vT[].successor(90) == vT.universe);
     
     assert(!(1029 in vT)); 
     
@@ -1304,7 +1312,7 @@ unittest
     assert(!vT.remove(866)); 
     assert(865 in vT); 
     assert(vT.remove(865)); 
-    assert(!(865 in vT)); 
+    assert(!(865 in vT));    
     
 }
 
@@ -1321,7 +1329,6 @@ unittest
 
     const filled = M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum; 
     assert(filled == vT.length); 
-
 
     size_t n; 
     auto i = vT.back; 
@@ -1567,7 +1574,7 @@ unittest
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: rand, opSlice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
+    // do not use more then "1 << 16", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     const auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     size_t[] arr; 
@@ -1586,7 +1593,9 @@ unittest
     static assert(!isInputRange!(VEBroot!())); 
     static assert(isIterable!(VEBroot!()));
     static assert(isBidirectionalRange!(typeof(VEBroot!()[])));
-    static assert(is(typeof((typeof(VEBroot!(new size_t[0])[]) r) => r[0]))); 
+    auto root = vebRoot!(size_t)(4);
+    auto res = root[2];
+    //static assert(is(typeof((typeof(VEBroot!(new size_t[0])[]) r) => r[0]))); 
 }
 
 ///
@@ -1599,7 +1608,8 @@ unittest
     assert(result);
     result = vT.insert(10); 
     assert(result);
-    //assert(vT[] == [2, 5, 10]); 
+    assert(vT[] == [0, 2, 5, 10, 14]); 
+    assert(vT() == [2, 5, 10]); 
 }
 
 ///
@@ -1696,10 +1706,8 @@ unittest
     auto vT2 = vTnew; 
     static assert(isIterable!(typeof(vTnew))); 
     auto slice = vTnew(); 
-    /* TODO: uncomment
     assert(slice.front == uniqueArr.front); 
     assert(vTnew() == uniqueArr.array); 
-    */
     assert(!vTnew.empty);
     assert(!vT2.empty);
 
@@ -1707,7 +1715,6 @@ unittest
     auto vT3 = vebRoot(N); 
     assert(vT3.empty); 
     auto unique3 = N.iota.map!(i => uniform(0U, N, rndGenInUse)).array.sort.uniq;
-    //TODO: auto unique3 = N.iota.map!(i => uniform(1U, N, rndGenInUse)).array.sort.uniq;
     unique3.each!(u => vT3.insert(u));
     unique3.each!(u => assert(u in vT3));
     assert(vT3.length == unique3.array.length); 
@@ -1740,7 +1747,7 @@ unittest
     //*/
 }
 
-private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias Root, alias Source)
+private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, Source...)
 {
     static assert(isBidirectionalRange!(typeof(this)));
     
@@ -1759,7 +1766,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias 
 
     size_t length; 
     
-    this(R val)
+    private this(R val)
     {
         root = val;
         length = root.length; 
@@ -1861,10 +1868,19 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias 
         --length; 
     }
 
-    static if(!is(typeof(Source) == typeof(null)))
+    auto predecessor(size_t key) const
     {
-        static assert(!is(typeof(Source) == typeof(null)));
-        auto ref opIndex(size_t key)
+        return root.predecessor(key); 
+    }
+
+    auto successor(size_t key) const
+    {
+        return root.successor(key); 
+    }
+    static if(!is(Source[0] == void))
+    {
+        static assert(!is(Source[0] == void));
+        auto ref opIndex(size_t key) @nogc
         {
             return root[key]; 
         }
@@ -1872,6 +1888,26 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias 
         void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!Source))
         {
             root[key] = val; 
+        }
+
+        /**
+        opApply method in case of present source for iterating over key value pairs
+        */
+        int opApply(scope int delegate(size_t, ref Source[0]) @nogc operations) @nogc
+        {
+            int result; 
+            
+            for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
+            {
+                result = operations(leading.get, *root[leading.get]); 
+
+                if(result)
+                {
+                    break; 
+                }
+            }
+
+            return result;
         }
     }
     
@@ -1884,28 +1920,37 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias 
     {
         return this; 
     }
-
-    bool opEquals()(auto ref const typeof(this) input) const
+    
+    typeof(this) dup()
     {
-        return root == input.root; 
+        auto copy = this; 
+        copy.root = root.dup; 
+        return copy; 
     }
+
+    size_t toHash() const { assert(0); }
 
     /**
     for comparison with an iterable, the iterable will be iterated, as the current object. If the iterable object is an 
     input range, it will be destroyed. 
     */
-    bool opEquals(T)(auto ref T input) if(isIterable!T)
+    bool opEquals(T)(auto ref const T input) if(isIterable!T)
     {
-        auto copy = this; 
+        static if(is(T == typeof(this)))
+        {
+            return root == input.root; 
+        }
 
         static if(hasLength!T)
         {
-            if(copy.length != input.length)
+            if(length != input.length)
             {
                 return false; 
             }
         }
-        
+
+        auto copy = this.save; 
+
         foreach(el; input)
         {
             if(el != copy.front.get)
@@ -1919,7 +1964,12 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias 
     }
 }
 
-size_t get(size_t input)
+private : 
+size_t get(size_t input) @nogc
 {
     return input; 
+}
+bool isNull(size_t input) @nogc
+{
+    return false; 
 }
