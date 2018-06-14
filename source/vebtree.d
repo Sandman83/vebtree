@@ -294,7 +294,6 @@ size_t length()
 
 dup
 (E* opIndex(key))
-(void opIndexAssign(value, key))
 VEBtree opIndex()
 VEBtree opCall()
 bool empty()
@@ -311,7 +310,6 @@ front()
 popFront()
 back()
 popBack()
-(void opIndexAssign(value, key))
 
 
 (E* opIndex(size_t key))
@@ -405,8 +403,16 @@ unittest
 {
     auto vr = vebRoot!size_t(100);   
     assert(vr.empty); 
-    vr.insert(3, 42UL); 
+    size_t input = 42; 
+    vr.insert(3, input); 
     assert(vr.front == 3); 
+    assert(*vr[3] == 42);
+
+    size_t input2 = 73; 
+    vr.insert(3, input2); 
+    assert(*vr[3] == 42);
+    *vr[3] = 73; 
+    assert(*vr[3] == 73);
 }
 
 /*
@@ -614,13 +620,44 @@ struct VEBroot(T = void)
     {
         auto ref opIndex(size_t key) @nogc
         {
-            return dataArr[key];
-        }
+            assert(universe); 
+            if(key > universe.nextPow2)
+            {
+                return null; 
+            }
+            if(isLeaf)
+            {
+                assert(key < baseSize);
+                return dataArr[key];
+            }
+            else
+            {
+                if(empty)
+                {
+                    // if an empty intermediate node is found, nothing is stored below it. 
+                    return null; 
+                } 
+                // case of a single valued range. 
+                if(key == front)
+                {
+                    return dataArr[0]; 
+                }
 
-        void opIndexAssign(E)(ref E val, size_t key) if(is(E == ElementType!source))
-        {
-            insert(key); 
-            dataArr[key] = &val; 
+                if(key == back)
+                {
+                    return dataArr[1];
+                }
+                
+                /*
+                    else we have to descend, using the recursive indexing: 
+                    1. take the high(value, uS)-th child and 
+                    2. ask it about the reduced low(value, uS) value
+                    3. use the lSR(uS) universe size of the childe node. 
+                */
+                
+                assert(cluster[high(key)].universe == lSR(universe.nextPow2));
+                return cluster[high(key)][low(key)]; 
+            }
         }
     }
 
@@ -700,7 +737,7 @@ struct VEBroot(T = void)
     insert method. this method is called from class with a universe size given. It performs recursion calls untill
     the universe size is reduced to the base size. Then the overloaded insert method is called. 
     */
-    bool insert(T...)(size_t key, auto ref T value) 
+    bool insert(T...)(size_t key, ref T value) 
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         
@@ -1163,7 +1200,6 @@ struct VEBroot(T = void)
             assert(stats !is null); 
             tmpArr.length = hSR(universe.nextPow2) + 1; 
             
-
             static if(!is(T == void))
             {
                 ptrArr = tmpArr.ptr;
@@ -1226,7 +1262,7 @@ struct VEBroot(T = void)
     /**
     setter for the min, setting either the lowest bit or the min part of the value. 
     */
-    @property void front(T...)(size_t key, auto ref T value) 
+    @property void front(T...)(size_t key, ref T value) 
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         if(isLeaf)
@@ -1250,7 +1286,7 @@ struct VEBroot(T = void)
     /**
     setter for the max, setting either the highest bit or the max part of the value. 
     */
-    @property void back(T...)(size_t key, auto ref T value) 
+    @property void back(T...)(size_t key, ref T value) 
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         if(isLeaf) 
@@ -1999,11 +2035,6 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         auto ref opIndex(size_t key) @nogc
         {
             return root[key]; 
-        }
-
-        void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!Source))
-        {
-            root[key] = val; 
         }
 
         /**
