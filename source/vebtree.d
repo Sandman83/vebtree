@@ -378,7 +378,6 @@ unittest
     auto x = uniform(0U, baseSize, rndGenInUse);
     auto vN = vebRoot(baseSize); 
     *vN.val = v; 
-    
     bool found; 
 
     for (size_t index = x + 1; index < baseSize; ++index)
@@ -386,12 +385,11 @@ unittest
         if (v & (size_t(1) << index)) 
         {
             found = true; 
-            assert(vN.successor(x) == index); 
+            assert(vN.successor(x).get == index); 
             break; 
         }
     }
     if(!found) assert(vN.successor(x).isNull);
-    
 }
 
 auto vebRoot(T)(size_t universe)
@@ -403,16 +401,24 @@ unittest
 {
     auto vr = vebRoot!size_t(100);   
     assert(vr.empty); 
+    
     size_t input = 42; 
+    
     vr.insert(3, input); 
     assert(vr.front == 3); 
     assert(*vr[3] == 42);
-
+    
     size_t input2 = 73; 
     vr.insert(3, input2); 
     assert(*vr[3] == 42);
     *vr[3] = 73; 
     assert(*vr[3] == 73);
+
+    assert(vr[8] is null); 
+    vr[15] = input2;
+    assert(vr[15] !is null); 
+    vr.remove(15); 
+    assert(vr[15] is null); 
 }
 
 /*
@@ -486,7 +492,7 @@ struct VEBroot(T = void)
     /**
     the opApply method grants the correct foreach behavior
     */
-    int opApply(scope int delegate(ref size_t) @nogc operations) @nogc
+    int opApply(scope int delegate(ref size_t) /*@nogc*/ operations) //@nogc
     {
         int result; 
         
@@ -508,7 +514,7 @@ struct VEBroot(T = void)
         /**
         opApply method in case of present source for iterating over key value pairs
         */
-        int opApply(scope int delegate(ref size_t, ref T) @nogc operations) @nogc
+        int opApply(scope int delegate(ref size_t, ref T) /*@nogc*/ operations) //@nogc
         {
             int result; 
         
@@ -658,6 +664,11 @@ struct VEBroot(T = void)
                 assert(cluster[high(key)].universe == lSR(universe.nextPow2));
                 return cluster[high(key)][low(key)]; 
             }
+        }
+
+        void opIndexAssign(ref T value, size_t key)
+        {
+            insert(key, value); 
         }
     }
 
@@ -883,9 +894,14 @@ struct VEBroot(T = void)
     remove method. this method is called from class with a universe size given. It performs recursion calls untill
     the universe size is reduced to the base size. Then the overloaded remove method is called. 
     */
-    bool remove(size_t value) // @nogc nothrow 
+    auto remove(size_t key) // @nogc nothrow 
     {
-        typeof(return) res; 
+        bool res; 
+        static if(!is(T == void))
+        {
+            T* value; 
+        }
+
         scope(exit)
         {
             length = length - res; 
@@ -893,88 +909,241 @@ struct VEBroot(T = void)
         // if descended so far, do not use other functionality any more. 
         if(isLeaf)
         {
-            res = btr(val, value) != 0;
-            return res; 
+            res = btr(val, key) != 0;
+            static if(!is(T == void))
+            {
+                if(res)
+                {
+                    value = dataArr[key]; 
+                    dataArr[key] = null; 
+                }
+            }
+
+            static if(is(T == void))
+            {
+                return res; 
+            }
+            else
+            {
+                return value; 
+            }
         }
 
         if(empty) 
         {
             // if the current node is null, there is nothing to remove. 
             res = false; 
-            return res; 
+            static if(is(T == void))
+            {
+                return res; 
+            }
+            else
+            {
+                return value; 
+            }
         }
         
         if(front == back) // if the current node contains only a single value
         {
-            if(front != value)
+            if(front != key)
             {
                 // do nothing if the given value is not the stored one 
                 res = false; 
-                return res; 
+
+                static if(is(T == void))
+                {
+                    return res; 
+                }
+                else
+                {
+                    return value; 
+                }
             } 
 
-            this.nullify; // set this node to the sentinel-null if it does. 
+            // set this node to the sentinel-null if it does.
+            static if(!is(T == void))
+            {
+                value = this.nullify; 
+            }
+            else
+            {
+                this.nullify; 
+            }
+            
             res = true; 
-            return res; 
+
+            static if(is(T == void))
+            {
+                return res; 
+            }
+            else
+            {
+                return value; 
+            }
         }
-        if(value == front) // if we met the minimum of a node 
+
+        if(key == front) // if we met the minimum of a node 
         {
             auto treeOffset = summary.front; // calculate an offset from the summary to continue with
             if(treeOffset.isNull) // if the offset is invalid, then there is no further hierarchy and we are going to 
             {
                 front = back; // store a single value in this node. 
                 res = true; 
-                return res; 
+
+                static if(is(T == void))
+                {    
+                    return res; 
+                }
+                else
+                {
+                    value = dataArr[0]; 
+                    dataArr[0] = dataArr[1]; 
+                    return value; 
+                }
             }
             auto min = cluster[treeOffset.get].front; // otherwise we get the minimum from the offset child
+            
             assert(cluster[treeOffset].universe == lSR(universe.nextPow2)); 
-            cluster[treeOffset.get].remove(min); // remove it from the child 
+
+            // remove it from the child 
+            static if(is(T == void))
+            {
+                cluster[treeOffset.get].remove(min); 
+            }
+            else
+            {
+                auto minVal = cluster[treeOffset.get].remove(min); 
+            }
 
             // if it happens to become null during the remove process, we also remove the offset entry from the summary 
             assert(summary.universe == hSR(universe.nextPow2));
-            if(cluster[treeOffset.get].empty) summary.remove(treeOffset.get); 
-
-            //anyway, the new min of the current node become the restored value of the calculated offset. 
-            front = index(treeOffset.get, min); 
-            
-            res = true; 
-            return res; 
-        }
-        if(value == back) // if we met the maximum of a node 
-        {
-            auto treeOffset = summary.back; // calculate an offset from the summary to contiue with 
-            if(treeOffset.isNull) // if the offset is invalid, then there is no further hierarchy and we are going to 
+            if(cluster[treeOffset.get].empty)
             {
-                back = front; // store a single value in this node. 
-                res = true; 
-                return res; 
+                summary.remove(treeOffset.get); 
             }
 
-            auto max = cluster[treeOffset.get].back; // otherwise we get maximum from the offset child 
+            //anyway, the new min of the current node become the restored value of the calculated offset. 
+            static if(is(T == void))
+            {
+                front(index(treeOffset.get, min)); 
+            }
+            else
+            {
+                value = dataArr[0]; 
+                front(index(treeOffset.get, min), *minVal); 
+            }
+            
+            res = true; 
+            static if(is(T == void))
+            {
+                return res; 
+            }
+            else
+            {
+                return value; 
+            }
+            
+        }
+
+        // if we met the maximum of a node 
+        if(key == back) 
+        {
+            // calculate an offset from the summary to contiue with 
+            auto treeOffset = summary.back; 
+            // if the offset is invalid, then there is no further hierarchy and we are going to 
+            if(treeOffset.isNull) 
+            {
+                // store a single value in this node. 
+                back = front; 
+                res = true; 
+                static if(is(T == void))
+                {
+                    return res; 
+                }
+                else
+                {
+                    value = dataArr[1]; 
+                    dataArr[1] = dataArr[0]; 
+                    return value;
+                }   
+            }
+
+            // otherwise we get maximum from the offset child 
+            auto max = cluster[treeOffset.get].back; 
             assert(cluster[treeOffset.get].universe == lSR(universe.nextPow2));
-            cluster[treeOffset.get].remove(max); // remove it from the child 
+
+            // remove it from the child 
+            static if(is(T == void))
+            {
+                cluster[treeOffset.get].remove(max); 
+            }
+            else
+            {
+                auto maxValue = cluster[treeOffset.get].remove(max); 
+            }
+            
 
             // if it happens to become null during the remove process, we also remove the offset enty from the summary 
             assert(summary.universe == hSR(universe.nextPow2));
             if(cluster[treeOffset.get].empty) summary.remove(treeOffset.get); 
 
             // anyway, the new max of the current node become the restored value of the calculated offset. 
-            back = index(treeOffset.get, max); 
+            static if(is(T == void))
+            {
+                back(index(treeOffset.get, max)); 
+            }
+            else
+            {
+                value = dataArr[1]; 
+                back(index(treeOffset.get, max), *maxValue); 
+            }
+            
             res = true; 
-            return res; 
+            static if(is(T == void))
+            {
+                return res; 
+            }
+            else
+            {
+                return value; 
+            }
+            
         }
 
         // if no condition was met we have to descend deeper. We get the offset by reducing the value to high(value, uS)
-        auto treeOffset = high(value); 
+        auto treeOffset = high(key); 
         // and remove low(value, uS) from the offset child. 
         assert(cluster[treeOffset].universe == lSR(universe.nextPow2));
-        bool retVal = cluster[treeOffset].remove(low(value)); 
+
+        static if(is(T == void))
+        {
+            res = cluster[treeOffset].remove(low(key)); 
+        }
+        else
+        {
+            auto prelength = cluster[treeOffset].length; 
+            value = cluster[treeOffset].remove(low(key)); 
+        }
+
         // if the cluster become null during the remove process we have to update the summary node. 
         assert(summary.universe == hSR(universe.nextPow2));
-        if(cluster[treeOffset].empty) summary.remove(treeOffset); 
+        if(cluster[treeOffset].empty)
+        {
+            summary.remove(treeOffset); 
+        }
 
-        res = retVal; 
-        return res; 
+        static if(is(T == void))
+        {
+            return res; 
+        }
+        else
+        {
+            res = prelength > cluster[treeOffset].length; 
+            return value; 
+        }
+        
+
+        
     }
 
     /**
@@ -1049,7 +1218,7 @@ struct VEBroot(T = void)
     successor method. this method is called from class with a universe size given. It performs recursion calls until
     the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
-    Response successor(size_t value) @nogc nothrow 
+    Response successor(size_t value) //@nogc nothrow 
     {
         // if descended so far, do not use other functionality any more. 
         typeof(return) retVal; 
@@ -1067,7 +1236,7 @@ struct VEBroot(T = void)
         if(empty) return retVal; // if this node is empty, no successor can be found here or deeper in the tree
         if(value < front) return front; // if given value is less then the min, return the min as successor
         if(value >= back) return retVal; // if given value is greater then the max, no predecessor exists
-
+        
         /*
             if none of the break conditions was met, we have to descent further into the tree. 
         */
@@ -1222,7 +1391,7 @@ struct VEBroot(T = void)
             cluster.each!((ref el) => el = typeof(this)(lSR(universe.nextPow2)));
             assert(stats !is null); 
             ptrArr[1 .. hSR(universe.nextPow2) + 1].each!((ref el) => assert(el.universe == lSR(universe.nextPow2)));
-            nullify; // set the value to the sentinel value to represent the empty state. 
+            
         }
         else
         {
@@ -1235,6 +1404,7 @@ struct VEBroot(T = void)
         {
             dataArr = tmpDataArr.ptr; 
         }
+        nullify; // set the value to the sentinel value to represent the empty state. 
     }
 
     /** convinience method to check, if the node belongs to the lowest level in the tree */
@@ -1249,14 +1419,50 @@ struct VEBroot(T = void)
     }
 
     /** method executing the appropriate steps to nullify the current node */
-    @property void nullify() // @nogc nothrow 
+    @property auto nullify() // @nogc nothrow 
     in
     {
         assert(val !is null); 
     }
     do
     {
-        *val = isLeaf ? 0 : 1;
+        if(isLeaf)
+        {
+            *val = 0; 
+        }
+        else
+        {
+            *val = 1; 
+        }
+
+        static if(!is(T == void))
+        {
+            T* retVal; 
+            if(isLeaf)
+            {
+                foreach(el; dataArr[0 .. baseSize])
+                {
+                    if(el !is null)
+                    {
+                        assert(retVal is null); 
+                        retVal = el; 
+                        version(release)
+                        {
+                            break; 
+                        }
+                    }
+                }
+                dataArr[0 .. baseSize] = null; 
+            }
+            else
+            {
+                assert(dataArr[0] == dataArr[1]); 
+                retVal = dataArr[0]; 
+                dataArr[0 .. 2] = null; 
+                
+            }
+            return retVal; 
+        }
     }  
 
     /**
@@ -1307,17 +1513,17 @@ struct VEBroot(T = void)
         }
     }
 
-    size_t low(size_t key) @nogc nothrow
+    size_t low(size_t key) //@nogc nothrow
     {
         return .low(universe.nextPow2, key); 
     }
 
-    size_t high(size_t key) @nogc nothrow 
+    size_t high(size_t key) //@nogc nothrow 
     {
         return .high(universe.nextPow2, key); 
     }
 
-    size_t index(size_t x, size_t y) @nogc nothrow 
+    size_t index(size_t x, size_t y) //@nogc nothrow 
     {
         return .index(universe.nextPow2, x, y); 
     }
@@ -2032,7 +2238,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
     static if(!is(Source[0] == void))
     {
         static assert(!is(Source[0] == void));
-        auto ref opIndex(size_t key) @nogc
+        auto ref opIndex(size_t key) //@nogc
         {
             return root[key]; 
         }
@@ -2040,7 +2246,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         /**
         opApply method in case of present source for iterating over key value pairs
         */
-        int opApply(scope int delegate(size_t, ref Source[0]) @nogc operations) @nogc
+        int opApply(scope int delegate(size_t, ref Source[0]) /*@nogc*/ operations) //@nogc
         {
             int result; 
             
