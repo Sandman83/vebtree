@@ -61,7 +61,7 @@ import std.traits; // used for generating the tree given an iterable
 import std.range; 
 import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
-import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference; 
+import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference, min, max; 
 
 private enum vdebug = true; 
 
@@ -156,16 +156,16 @@ size_t hSR(size_t value) @nogc nothrow
 ///
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: hSR.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto hSR = hSR(M); 
 
     assert((hSR & (hSR - 1)) == 0); 
     if(hSR < halfSizeT.max) assert(hSR >= sqrt(to!float(M)));
     
-    const auto check = powersOfTwo.until(hSR).array; 
+    auto check = powersOfTwo.until(hSR).array; 
     assert((check[$-1]) * (check[$-1]) < M); 
 }
 
@@ -181,15 +181,15 @@ size_t lSR(size_t value) @nogc nothrow
 ///
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: lSR.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto lSR = lSR(M); 
     
     assert((lSR & (lSR - 1)) == 0); 
     assert(lSR * lSR < M);
-    const auto check = powersOfTwo.find(lSR).array; 
+    auto check = powersOfTwo.find(lSR).array; 
     
     if(lSR < size_t.max/2) assert((check[1]) > sqrt(to!float(M))); 
 }
@@ -210,12 +210,12 @@ do
 ///
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: high.             "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    const size_t U = nextPow2(M); 
-    const size_t x = uniform(0U, U, rndGenInUse); 
+    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    auto U = nextPow2(M); 
+    auto x = uniform(0U, U, rndGenInUse); 
 
     assert(high(U, x) == x / lSR(U)); 
 }
@@ -236,12 +236,12 @@ do
 ///
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: low.              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    const size_t U = nextPow2(M); 
-    const size_t x = uniform(0U, U, rndGenInUse); 
+    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    auto U = nextPow2(M); 
+    auto x = uniform(0U, U, rndGenInUse); 
 
     assert(low(U, x) == (x & (lSR(U) - 1)));
 }
@@ -257,13 +257,13 @@ private size_t index(size_t universe, size_t x, size_t y) @nogc nothrow
 ///
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: index.            "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    auto M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     
-    const size_t U = nextPow2(M); 
-    const size_t x = uniform(0U, U, rndGenInUse); 
+    auto U = nextPow2(M); 
+    auto x = uniform(0U, U, rndGenInUse); 
     
     assert(index(U, high(U, x), low(U, x)) == x); 
 }
@@ -328,8 +328,8 @@ unittest
     static if(vdebug){write("UT: vN, opIn_r.       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    const auto value = uniform(0U, size_t.max, rndGenInUse);
-    const auto bitNum = uniform(0U, baseSize, rndGenInUse);
+    auto value = uniform(0U, size_t.max, rndGenInUse);
+    auto bitNum = uniform(0U, baseSize, rndGenInUse);
     auto vN = vebRoot(baseSize); 
     *vN.val = value; 
     
@@ -341,17 +341,16 @@ unittest
     if((*vN.val & size_t(1) << bitNum) == 0 )
     {
         assert(!(bitNum in vN)); 
-    } 
-    
+    }
 }
 //
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t v = uniform(2U, testedSize, rndGenInUse); //set universe size to some integer. 
-    const size_t x = uniform(1U, baseSize, rndGenInUse);
+    auto v = uniform(2U, testedSize, rndGenInUse); //set universe size to some integer. 
+    auto x = uniform(1U, baseSize, rndGenInUse);
     auto vN = vebRoot(baseSize); 
     *vN.val = v; 
 
@@ -374,11 +373,11 @@ unittest
 //
 unittest
 {
-    const size_t currentSeed = unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: vN, successor.    "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const size_t v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
-    const size_t x = uniform(0U, baseSize, rndGenInUse);
+    auto v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
+    auto x = uniform(0U, baseSize, rndGenInUse);
     auto vN = vebRoot(baseSize); 
     *vN.val = v; 
     
@@ -400,6 +399,14 @@ unittest
 auto vebRoot(T)(size_t universe)
 {
     return VEBroot!T(universe); 
+}
+/// 
+unittest
+{
+    auto vr = vebRoot!size_t(100);   
+    assert(vr.empty); 
+    vr.insert(3, 42UL); 
+    assert(vr.front == 3); 
 }
 
 /*
@@ -433,7 +440,7 @@ private auto vebRoot(alias source)(size_t universe)
 */
 struct VEBroot(T = void)
 {
-    @property size_t capacity() const
+    @property size_t capacity()
     in
     {
         assert(stats !is null); 
@@ -450,7 +457,7 @@ struct VEBroot(T = void)
         }
     }
 
-    @property size_t universe() const
+    @property size_t universe()
     in
     {
         assert(stats !is null); 
@@ -460,7 +467,7 @@ struct VEBroot(T = void)
         return (*stats & higherMask) >> (size_t.sizeof * CHAR_BIT/2);     
     }
 
-    @property size_t length() const
+    @property size_t length()
     in
     {
         assert(stats !is null); 
@@ -473,7 +480,7 @@ struct VEBroot(T = void)
     /**
     the opApply method grants the correct foreach behavior
     */
-    int opApply(scope int delegate(ref size_t) @nogc operations) const @nogc
+    int opApply(scope int delegate(ref size_t) @nogc operations) @nogc
     {
         int result; 
         
@@ -517,7 +524,7 @@ struct VEBroot(T = void)
         method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
         mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Response front() const // @nogc nothrow 
+    @property Response front() // @nogc nothrow 
     {
         // define the result as a nullable 
         typeof(return) retVal; 
@@ -546,7 +553,7 @@ struct VEBroot(T = void)
         method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
         vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Response back() const // @nogc nothrow 
+    @property Response back() // @nogc nothrow 
     {
         // define the result as a nullable
         typeof(return) retVal; 
@@ -579,12 +586,23 @@ struct VEBroot(T = void)
         *copy.val = *this.val; 
         if(isLeaf)
         {
-            copy.dataArr = this.dataArr[0 .. baseSize].dup.ptr; 
+            static if(!is(T == void))
+            {
+                copy.dataArr = this.dataArr[0 .. baseSize].dup.ptr;     
+            }
         }
         else
         {
-            copy.ptrArr = this.ptrArr[0 .. hSR(universe.nextPow2) + 1].dup.ptr;
-            copy.dataArr = this.dataArr[0 .. 2].dup.ptr; 
+            
+            static if(!is(T == void))
+            {
+                copy.ptrArr = this.ptrArr[0 .. hSR(universe.nextPow2) + 1].dup.ptr;
+                copy.dataArr = this.dataArr[0 .. 2].dup.ptr;     
+            }
+            else
+            {
+                copy.ptrArr = this.ptrArr[0 .. hSR(universe.nextPow2) + 1].dup;
+            }
 
             copy.ptrArr[0 .. hSR(universe.nextPow2) + 1].each!((ref n) => n = n.dup);
         }
@@ -619,7 +637,7 @@ struct VEBroot(T = void)
     /** 
     method to check whether the current node holds a value
     */
-    @property bool empty() const // @nogc nothrow 
+    @property bool empty() // @nogc nothrow 
     in
     {
         assert(val !is null); 
@@ -640,7 +658,7 @@ struct VEBroot(T = void)
     member method for the case universe size < base size. Overloads by passing only one parameter, which is
     the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
-    bool opBinaryRight(string op)(size_t key) inout if(op == "in")  // @nogc nothrow 
+    bool opBinaryRight(string op)(size_t key) if(op == "in")  // @nogc nothrow 
     {
         assert(universe); 
         if(key > universe.nextPow2)
@@ -654,7 +672,7 @@ struct VEBroot(T = void)
         }
         else
         {
-            if(this.empty)
+            if(empty)
             {
                 // if an empty intermediate node is found, nothing is stored below it. 
                 return false; 
@@ -682,16 +700,17 @@ struct VEBroot(T = void)
     insert method. this method is called from class with a universe size given. It performs recursion calls untill
     the universe size is reduced to the base size. Then the overloaded insert method is called. 
     */
-    bool insert(size_t value) // @nogc nothrow 
+    bool insert(T...)(size_t key, auto ref T value) 
+        if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
-        import std.algorithm.comparison : min, max;
+        
         typeof(return) res; 
         scope(exit)
         {
             length = length + res; 
         }
         
-        if(value > capacity)
+        if(key > capacity)
         {
             res = false; 
             return res;     
@@ -701,24 +720,33 @@ struct VEBroot(T = void)
         if(isLeaf)
         {
             assert(val !is null); 
-            res = bts(val, value) == 0;
+            res = bts(val, key) == 0;
+            static if(T.length)
+            {
+                if(res)
+                {
+                    writeln("dataArr[key]: ", dataArr[key]); 
+                    dataArr[key] = &value[0]; 
+                    writeln("dataArr[key]: ", dataArr[key]); 
+                }
+            }
             return res; 
         }
 
-        if(this.empty) // if the current node does not contain anything put the value inside. 
+        if(empty) // if the current node does not contain anything put the value inside. 
         {
-            front = value; // the setters of min handle the value appropriately and do not need the universe size
-            back = value; // being explicitely provided, as they can check the isLeaf property. 
-            assert(!this.empty); 
+            front(key, value); // the setters of min handle the value appropriately and do not need the universe size
+            back(key, value); // being explicitely provided, as they can check the isLeaf property. 
+            assert(!empty); 
             res = true; 
             return res; 
         }
 
-        assert(!this.empty);
-        assert(!this.front.isNull); 
-        assert(!this.back.isNull); 
+        assert(!empty);
+        assert(!front.isNull); 
+        assert(!back.isNull); 
 
-        if(value == front || value == back)
+        if(key == front || key == back)
         {
             res = false; // return, if value is already here.
             return res; 
@@ -726,8 +754,15 @@ struct VEBroot(T = void)
 
         if(front == back) // if the node contains a single value only, expand the node to a range and leave. 
         {
-            front = min(front, value); 
-            back = max(back, value); 
+            if(front > key)
+            {
+                front(key, value); 
+            }
+            if(back < key)
+            {
+                back(key, value); 
+            }
+            
             res = true; 
             return res; 
         }
@@ -736,28 +771,73 @@ struct VEBroot(T = void)
             with the values present and adapt the range limits. This replaces the value we want to insert. 
         */
         // a swap can not be used here, as min is itself a (property) method 
-        if(value < front)
+        if(key < front)
         {
-            const auto tmp = value; value = this.front.get; front = tmp;
+            auto tmpKey = key; 
+
+            static if(T.length)
+            {
+                auto tmpVal = value[0]; 
+            }
+
+            key = front.get;
+
+            static if(T.length)
+            {
+                value[0] = *this[front.get]; 
+            }
+            
+            static if(T.length)
+            {
+                front(tmpKey, tmpVal);
+            }
+            else
+            {
+                front(tmpKey); 
+            }
+            
         }
         // a swap can not be used here, as max is itself a (property) method 
-        if(value > back)
+        if(key > back)
         {
-            const auto tmp = value; value = this.back.get; back = tmp;
+            auto tmpKey = key; 
+            
+            static if(T.length)
+            {
+                auto tmpVal = value[0]; 
+            }
+            
+            key = back.get; 
+            
+            static if(T.length)
+            {
+                value[0] = *this[back.get]; 
+            }
+
+            static if(T.length)
+            {
+                back(tmpKey, tmpVal); 
+            }
+            else
+            {
+                back(tmpKey); 
+            }
         }
         
         // calculate the index of the children cluster by high(value, uS) we want to descent to. 
-        auto nextTreeIndex = high(value); 
+        auto nextTreeIndex = high(key); 
         
         // if the child is happened to be null we have to update the summary and insert value of high(value, uS) into it
         assert(summary.universe == hSR(universe.nextPow2));
         
-        //assert(cluster[treeOffset.get].universe == lSR(universe.nextPow2));
-        if(cluster[nextTreeIndex].empty) summary.insert(high(value));
+        if(cluster[nextTreeIndex].empty)
+        {
+            summary.insert(high(key), value);
+        }
         
         // in any case we pass the lowered value low(value, uS) to the child. 
         assert(cluster[nextTreeIndex].universe == lSR(universe.nextPow2));
-        res = cluster[nextTreeIndex].insert(low(value)); 
+        res = cluster[nextTreeIndex].insert(low(key), value); 
         
         return res;
     }
@@ -780,7 +860,7 @@ struct VEBroot(T = void)
             return res; 
         }
 
-        if(this.empty) 
+        if(empty) 
         {
             // if the current node is null, there is nothing to remove. 
             res = false; 
@@ -851,7 +931,7 @@ struct VEBroot(T = void)
         auto treeOffset = high(value); 
         // and remove low(value, uS) from the offset child. 
         assert(cluster[treeOffset].universe == lSR(universe.nextPow2));
-        const bool retVal = cluster[treeOffset].remove(low(value)); 
+        bool retVal = cluster[treeOffset].remove(low(value)); 
         // if the cluster become null during the remove process we have to update the summary node. 
         assert(summary.universe == hSR(universe.nextPow2));
         if(cluster[treeOffset].empty) summary.remove(treeOffset); 
@@ -864,7 +944,7 @@ struct VEBroot(T = void)
     predecessor method. this method is called from class with a universe size given. It performs recursion calls
     until the universe size is reduced to the base size. Then the overloaded predecessor method is called. 
     */
-    Response predecessor(size_t value) const // @nogc nothrow
+    Response predecessor(size_t value) // @nogc nothrow
     {
         typeof(return) retVal; 
 
@@ -886,7 +966,7 @@ struct VEBroot(T = void)
             return retVal; 
         }
         // if this node is empty, no predecessor can be found here or deeper in the tree
-        if(this.empty)
+        if(empty)
         {
             return retVal; 
         }
@@ -903,8 +983,8 @@ struct VEBroot(T = void)
         /*
         if none of the break conditions was met we have to descend further into the tree. 
         */
-        const auto childIndex = high(value); // calculate the child index by high(value, uS)
-        const auto minlow = cluster[childIndex].front; // look into the child for its minimum
+        auto childIndex = high(value); // calculate the child index by high(value, uS)
+        auto minlow = cluster[childIndex].front; // look into the child for its minimum
         // if the minimum exists and the lowered given value is greater then the child's minimum
         if(!minlow.isNull && low(value) > minlow) 
         {
@@ -920,7 +1000,7 @@ struct VEBroot(T = void)
             assert(summary.universe == hSR(universe.nextPow2)); 
             auto predcluster = summary.predecessor(childIndex);
             // if the predecessor cluster is null return the current min, as this is the last remaining value 
-            if(predcluster.isNull) return this.front; 
+            if(predcluster.isNull) return front; 
             // if the predecessor cluster exists, the offset is given by its maximum
             // and the result by the reconstruction of the offset. 
             retVal = index(predcluster, cluster[predcluster].back); 
@@ -932,7 +1012,7 @@ struct VEBroot(T = void)
     successor method. this method is called from class with a universe size given. It performs recursion calls until
     the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
-    Response successor(size_t value) const @nogc nothrow 
+    Response successor(size_t value) @nogc nothrow 
     {
         // if descended so far, do not use other functionality any more. 
         typeof(return) retVal; 
@@ -947,15 +1027,15 @@ struct VEBroot(T = void)
             }
             return retVal; 
         } 
-        if(this.empty) return retVal; // if this node is empty, no successor can be found here or deeper in the tree
-        if(value < this.front) return this.front; // if given value is less then the min, return the min as successor
+        if(empty) return retVal; // if this node is empty, no successor can be found here or deeper in the tree
+        if(value < front) return front; // if given value is less then the min, return the min as successor
         if(value >= back) return retVal; // if given value is greater then the max, no predecessor exists
 
         /*
             if none of the break conditions was met, we have to descent further into the tree. 
         */
-        const auto childIndex = high(value); // calculate the child index by high(value, uS)
-        const auto maxlow = cluster[childIndex].back; // look into the child for its maximum
+        auto childIndex = high(value); // calculate the child index by high(value, uS)
+        auto maxlow = cluster[childIndex].back; // look into the child for its maximum
         // if the maximum exists and the lowered given value is less then the child's maximum 
         if(!maxlow.isNull && low(value) < maxlow)
         {
@@ -971,7 +1051,7 @@ struct VEBroot(T = void)
             assert(summary.universe == hSR(universe.nextPow2)); 
             auto succcluster = summary.successor(childIndex); 
             // if the successor cluster is null
-            if(succcluster.isNull) return this.back; // return the current max, as this is the last remaining value 
+            if(succcluster.isNull) return back; // return the current max, as this is the last remaining value 
             // if the successor cluster exists, the offset is given by its minimum
             // and the result by the reconstruction of the offset. 
             retVal = index(succcluster, cluster[succcluster].front); 
@@ -986,15 +1066,24 @@ struct VEBroot(T = void)
         property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
         an intermediate node. // the first member behaves different, as the others, as it is the summary node. 
     */
-    typeof(this)* ptrArr; 
-    T** dataArr; 
+
+    static if(!is(T == void))
+    {
+        T** dataArr; 
+        typeof(this)* ptrArr; 
+    }
+    else
+    {
+        typeof(this)[] ptrArr; 
+    }
+    
     // contains max and min, or the bit array of keys
     size_t* val;
     // contains universe size and the current length
     size_t* stats; 
     
     // property returning the summary node 
-    @property auto ref summary() inout // @nogc nothrow 
+    @property auto ref summary() // @nogc nothrow 
     in
     {
         assert(!isLeaf);
@@ -1005,7 +1094,7 @@ struct VEBroot(T = void)
     }
     
     // property returning the cluster array 
-    @property auto ref cluster() inout // @nogc nothrow 
+    @property auto ref cluster() // @nogc nothrow 
     in
     {
         assert(!isLeaf);
@@ -1061,7 +1150,11 @@ struct VEBroot(T = void)
 
         universe = uS; 
 
-        T*[] tmpDataArr;
+        static if(!is(T == void))
+        {
+            T*[] tmpDataArr;
+        }
+        
         assert(stats !is null); 
         if(universe > baseSize)
         {
@@ -1069,9 +1162,17 @@ struct VEBroot(T = void)
             typeof(this)[] tmpArr; 
             assert(stats !is null); 
             tmpArr.length = hSR(universe.nextPow2) + 1; 
-            ptrArr = tmpArr.ptr;
+            
 
-            tmpDataArr.length = 2; 
+            static if(!is(T == void))
+            {
+                ptrArr = tmpArr.ptr;
+                tmpDataArr.length = 2; 
+            }
+            else
+            {
+                ptrArr = tmpArr;
+            }
 
             // add the summary with its universe of higher squaure root of the current universe
             assert(stats !is null); 
@@ -1089,14 +1190,19 @@ struct VEBroot(T = void)
         }
         else
         {
-            tmpDataArr.length = baseSize; 
+            static if(!is(T == void))
+            {
+                tmpDataArr.length = baseSize; 
+            }
         }
-        dataArr = tmpDataArr.ptr; 
-        // else nothing todo.
+        static if(!is(T == void))
+        {
+            dataArr = tmpDataArr.ptr; 
+        }
     }
 
     /** convinience method to check, if the node belongs to the lowest level in the tree */
-    @property bool isLeaf() const // @nogc nothrow 
+    @property bool isLeaf() // @nogc nothrow 
     in
     {
         assert(stats !is null); 
@@ -1120,52 +1226,62 @@ struct VEBroot(T = void)
     /**
     setter for the min, setting either the lowest bit or the min part of the value. 
     */
-    @property void front(size_t value) // @nogc nothrow 
+    @property void front(T...)(size_t key, auto ref T value) 
+        if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         if(isLeaf)
         {
-            assert(front > value);
-            insert(value); 
+            assert(front > key);
+            insert(key, value); 
         }
         else
         {
             // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSizeBound);
+            assert(key < maxSizeBound);
             *val = *val & higherMask;
-            *val = *val | value;
+            *val = *val | key;
+            static if(T.length)
+            {
+                dataArr[0] = &value[0];
+            }
         }
     }
 
     /**
     setter for the max, setting either the highest bit or the max part of the value. 
     */
-    @property void back(size_t value) // @nogc nothrow 
+    @property void back(T...)(size_t key, auto ref T value) 
+        if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         if(isLeaf) 
         {
-            assert(back < value); 
-            insert(value); 
+            assert(back < key); 
+            insert(key, value); 
         }
         else
         {
             // the passed value should not exceed the allowed size of a size/2
-            assert(value < maxSizeBound); 
+            assert(key < maxSizeBound); 
             *val = *val & lowerMask; 
-            *val = *val | (value << (size_t.sizeof * CHAR_BIT/2));
+            *val = *val | (key << (size_t.sizeof * CHAR_BIT/2));
+            static if(T.length)
+            {
+                dataArr[1] = &value[0]; 
+            }
         }
     }
 
-    size_t low(size_t value) const @nogc nothrow
+    size_t low(size_t key) @nogc nothrow
     {
-        return .low(universe.nextPow2, value); 
+        return .low(universe.nextPow2, key); 
     }
 
-    size_t high(size_t value) const @nogc nothrow 
+    size_t high(size_t key) @nogc nothrow 
     {
-        return .high(universe.nextPow2, value); 
+        return .high(universe.nextPow2, key); 
     }
 
-    size_t index(size_t x, size_t y) const @nogc nothrow 
+    size_t index(size_t x, size_t y) @nogc nothrow 
     {
         return .index(universe.nextPow2, x, y); 
     }
@@ -1198,7 +1314,7 @@ unittest
     
     auto vT = vebRoot(100); 
     assert(vT.empty);
-    const auto result = vT.insert(2); 
+    auto result = vT.insert(2); 
     
     assert(result); 
     assert(!vT.empty); 
@@ -1206,10 +1322,10 @@ unittest
     assert(vT.length == 1);      
     
     auto vT2 = vT;
-    auto const vT3 = vT.dup(); 
+    auto vT3 = vT.dup(); 
     assert(2 in vT2);
     assert(vT2.length == 1); 
-    const result2 = vT2.insert(3);
+    auto result2 = vT2.insert(3);
     assert(vT2.length == 2);
     assert(result2); 
     assert(3 in vT2); 
@@ -1227,7 +1343,7 @@ unittest
     static if(vdebug){write("UT: vT, exportTree.   "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     
@@ -1323,11 +1439,11 @@ unittest
     static if(vdebug){write("UT: rand, succ.       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
     assert(vT.capacity == nextPow2(M-1)); 
 
-    const filled = M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum; 
+    auto filled = M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum; 
     assert(filled == vT.length); 
 
     size_t n; 
@@ -1361,7 +1477,7 @@ unittest
     auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, pred        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.back; 
@@ -1372,7 +1488,7 @@ unittest
     {
         result = vT.remove(i); 
         assert(result); 
-        const auto j = vT.predecessor(i); 
+        auto j = vT.predecessor(i); 
         if(!j.isNull)
             assert(j != i); 
         i = j; 
@@ -1388,7 +1504,7 @@ unittest
     auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, remove      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.front;
@@ -1399,7 +1515,7 @@ unittest
     {        
         result = vT.remove(i); 
         assert(result); 
-        const auto j = vT.successor(i); 
+        auto j = vT.successor(i); 
         if(!j.isNull)
             assert(j != i); 
         i = j; 
@@ -1474,7 +1590,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    const auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
+    auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
 
     size_t[] arr; 
@@ -1575,7 +1691,7 @@ unittest
     static if(vdebug){write("UT: rand, opSlice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 16", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    const auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
+    auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     size_t[] arr; 
     arr.length = 16 * vT.capacity/typeof(vT).sizeof; 
@@ -1685,8 +1801,8 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
-    auto const vT = vebRoot(M); 
+    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    auto vT = vebRoot(M); 
     /*testing the range methods*/
     assert(vT.empty); 
     
@@ -1809,7 +1925,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         }
     }
 
-    auto front() inout
+    auto front()
     {
         return frontKey; 
     }
@@ -1841,7 +1957,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         --length; 
     }
 
-    auto back() inout
+    auto back()
     {
         return backKey; 
     }
@@ -1868,12 +1984,12 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         --length; 
     }
 
-    auto predecessor(size_t key) const
+    auto predecessor(size_t key)
     {
         return root.predecessor(key); 
     }
 
-    auto successor(size_t key) const
+    auto successor(size_t key)
     {
         return root.successor(key); 
     }
@@ -1911,12 +2027,12 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         }
     }
     
-    bool empty() const
+    bool empty()
     {
         return !length; 
     }
 
-    auto save() inout
+    auto save()
     {
         return this; 
     }
@@ -1928,13 +2044,16 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         return copy; 
     }
 
-    size_t toHash() const { assert(0); }
+    size_t toHash()
+    {
+        assert(0);
+    }
 
     /**
     for comparison with an iterable, the iterable will be iterated, as the current object. If the iterable object is an 
     input range, it will be destroyed. 
     */
-    bool opEquals(T)(auto ref const T input) if(isIterable!T)
+    bool opEquals(T)(auto ref T input) if(isIterable!T)
     {
         static if(is(T == typeof(this)))
         {
