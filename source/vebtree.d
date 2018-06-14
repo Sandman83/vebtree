@@ -8,19 +8,17 @@
     This module implements a Van Emde Boas tree container.
     The module is still a work in progress. So, if you find an error by chance, please let me know in any way.
     The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size,
-    given an arbitrary size at the initialization. As long as the usage is intended to contains keys, as in the
-    current version, this restriction is not only a restriction of the amount of elements but also on the contained
-    element values. 
+    given an arbitrary size at the initialization. The tree can be used in two different modes: 
+    1. Tree contains keys only. Supported operations are 
+    inserting, deletion, membership testing, neighborhood searching. All queries are of order (lglg U), where U is the 
+    capacity of the tree, set on initialization. 
+    2. Tree contains keys and values. Additionally to the above operations the indexing operation is supported. It 
+    yields the pointer to a stored object, if the key is contained in the tree, otherwise null. 
     For optimization purposes, the size limit is size_t.max/2 + 1. The tree was tested on 64- and 32-bit arch. 
     So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
 */
 
 // (optional) todo: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
-
-/**
-    The library is supposed to contain a tree on keys only, for the data could be managed outside. Then, there could be 
-    a simple method to combine the keys and the data together. 
-*/
 
 /**
     The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard
@@ -63,24 +61,19 @@ import std.traits; // used for generating the tree given an iterable
 import std.range; 
 import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
+import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference; 
 
 private enum vdebug = true; 
 
+
+
+
 version(unittest)
 {
-    static if(vdebug){import std.stdio;}
-    import std.algorithm;
-    import std.random; 
-    import std.datetime.stopwatch; 
-    import std.conv : to;
-    import std.container; // red black tree may be used in unittests for comparison.
-    import std.math : sqrt; 
-    auto powersOfTwo = iota(0, CHAR_BIT * size_t.sizeof).map!(a => size_t(1) << a); 
-    Random rndGenInUse; 
-
-    // helping function for output a given value in binary representation
     static if(vdebug)
     {
+        import std.stdio;
+        // helping function for output a given value in binary representation
         void bin(size_t n)
         {
             /* step 1 */
@@ -89,38 +82,33 @@ version(unittest)
             write(n % 2);
         }
     }
+
+    /// precalculated powers of two table for unit testing
+    enum powersOfTwo = iota(0, CHAR_BIT * size_t.sizeof).map!(a => size_t(1) << a); 
+    import std.random; 
+    import std.datetime.stopwatch; 
+    import std.conv : to;
+    import std.container; // red black tree may be used in unittests for comparison.
+    import std.math : sqrt; 
     
+    Random rndGenInUse; 
+
     // during tests it is ok a tree with a random capacity not going up to the maximum one. 
     enum testedSize = 1 << 2 * size_t.sizeof; //3 * size_t.sizeof;
     // during tests helping static arrays are used, which have an absolute maximum of size_t.sizeof * 2^20 elements
     enum allowedArraySize = 1 << size_t.sizeof; //(2 * size_t.sizeof + size_t.sizeof/2); 
     // choosed arbitrary, to avoid seg. faults
+    // up to 1 << 27 = 1 << (32 - bsf(sizeof(VEBroot!())))
 
-    // some different filling functions for the tree. This simply tries to fill the tree with random numbers. Duplicates
-    // will be ignored, the given tree is modified. 
-    auto fill(T)(ref T vT, size_t m, Random rndGenInUse)
-    {
-        size_t n; 
-        for(size_t i; i < m; ++i)
-        {
-            auto x = uniform(0, vT.universe, rndGenInUse);
-            // the check for membership is done to add only on inserting to the counter, not just 
-            // because visiting the the loop
-            if(!(x in vT))
-            {
-                vT.insert(x); 
-                ++n; 
-            }
-        }
-        return n; 
-    }
-
+    
     // Ditto. This method asserts, that a given filling percentage is achieved. 
-    auto fill(T)(ref T vT, ref size_t[] arr, Random rndGenInUse, size_t fillPercentage = 31)
+    /*
+    auto fill(T)(ref T vT, Random rndGenInUse, size_t fillPercentage = T.sizeof - 1)
     {
+        size_t[] arr;
         size_t n; 
-        arr.length = fillPercentage * vT.capacity/32; 
-        while(n != fillPercentage * vT.capacity/32)
+        arr.length = fillPercentage * vT.capacity/T.sizeof; 
+        while(n != fillPercentage * vT.capacity/T.sizeof)
         {
             auto x = uniform(0, vT.capacity - 1, rndGenInUse);
             // the check for membership is done to add only on inserting to the counter, not just 
@@ -132,9 +120,15 @@ version(unittest)
                 ++n; 
             }
         }
-        assert(n == fillPercentage*vT.capacity/32); 
-        return n; 
+
+        return arr; 
+
+        (vT.capacity - 1).iota.randomCover(rndGenInUse)[0 .. fillPercentage * vT.capacity/T.sizeof]
+            .tee!((i, el) => arr[i] = el)
+            .each!(el => vT.insert(el));
+        
     }
+    */
 }
 
 /**
@@ -233,6 +227,11 @@ This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to fi
 of a element in the tree. It is a part of the ideal indexing function. 
 */
 private size_t high(size_t universe, size_t value) @nogc nothrow 
+in
+{
+    assert((universe & (universe - 1)) == 0); 
+}
+do
 {
     return value >> (bsr(universe) / 2);
 }
@@ -254,6 +253,11 @@ This is an index function defined as fmod(value, lSR(universe)). It is needed to
 value inside a cluster. It is part of the ideal indexing function
 */
 private size_t low(size_t universe, size_t value) @nogc nothrow
+in
+{
+    assert((universe & (universe - 1)) == 0); 
+}
+do
 {
     return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
 }
@@ -291,6 +295,15 @@ unittest
     
     assert(index(U, high(U, x), low(U, x)) == x); 
 }
+
+
+
+
+
+
+
+
+
 
 auto vebRoot(size_t universe)
 in
@@ -552,7 +565,7 @@ struct VEBroot(alias source = null)
 
     typeof(this) dup()
     {
-        //import std.algorithm : each; 
+        
         //import std.range; 
         auto copy = this;
         copy.stats = new size_t(); 
@@ -574,7 +587,17 @@ struct VEBroot(alias source = null)
     {
         auto ref opIndex(size_t key)
         {
-            return source[key];
+            /*
+            if(key in this)
+            {
+                return &source[key];
+            }
+            else
+            {
+                return null; 
+            }
+            */
+            assert(0); 
         }
 
         void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!source))
@@ -1200,7 +1223,8 @@ unittest
 
     const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
-    vT.fill(1000, rndGenInUse); 
+    assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
+    
 
     //TODO: uncomment
     //assert(vT[].front == 0); 
@@ -1294,7 +1318,11 @@ unittest
     const auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
     assert(vT.capacity == nextPow2(M-1)); 
-    const auto m = vT.fill(40, rndGenInUse); //(try to) fill the tree with thousend values 
+
+    const filled = M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum; 
+    assert(filled == vT.length); 
+
+
     size_t n; 
     auto i = vT.back; 
 
@@ -1303,7 +1331,7 @@ unittest
     {
         ++n;
         i = vT.predecessor(i); 
-        if(n > m) break; 
+        if(n > filled) break; 
     }
     
     size_t o;
@@ -1312,12 +1340,12 @@ unittest
     {
         ++o; 
         i = vT.successor(i.get);
-        if(o - 1 > m) break; 
+        if(o - 1 > filled) break; 
     }
     
     // assert, that all members are discovered, iff when no predecessors are left
-    assert(n == m); 
-    assert(o == m); 
+    assert(n == filled); 
+    assert(o == filled); 
 }
 
 ///
@@ -1328,7 +1356,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
-    vT.fill(1000, rndGenInUse); //fill the tree with some values 
+    assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.back; 
 
     // remove all members beginning from the maximum
@@ -1355,7 +1383,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
-    vT.fill(1000, rndGenInUse); //fill the tree with some values 
+    assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.front;
     
     // remove all members beginning from the minimum
@@ -1439,12 +1467,15 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    const auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
-    size_t[] arr; 
-    const auto howMuchFilled = vT.fill(arr, rndGenInUse); 
 
-    assert(arr.length == howMuchFilled); 
+    size_t[] arr; 
+    arr.length = 31 * vT.capacity/typeof(vT).sizeof; 
+    (vT.capacity - 1).iota.randomCover(rndGenInUse).take(arr.length)
+            .enumerate
+            .tee!(el => arr[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
     
     auto vT2 = vebRoot(M); 
     
@@ -1537,23 +1568,26 @@ unittest
     static if(vdebug){write("UT: rand, opSlice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    const auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    const auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
-
     size_t[] arr; 
-    vT.fill(arr, rndGenInUse, 16); 
-    //assert(setSymmetricDifference(vT[], sort(arr)).empty); 
+    arr.length = 16 * vT.capacity/typeof(vT).sizeof; 
+    (vT.capacity - 1).iota.randomCover(rndGenInUse).take(arr.length)
+            .enumerate
+            .tee!(el => arr[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
+
+    assert(setSymmetricDifference(vT(), arr.sort).empty); 
 }
-/* TODO: 
+
 ///
 unittest
 { 
-    assert(!isInputRange!(VEBroot!())); 
-    assert(isIterable!(VEBroot!()));
-    assert(isRandomAccessRange!(typeof(VEBroot!()[])));
-    assert(isRandomAccessRange!(typeof(VEBroot!()())));
+    static assert(!isInputRange!(VEBroot!())); 
+    static assert(isIterable!(VEBroot!()));
+    static assert(isBidirectionalRange!(typeof(VEBroot!()[])));
+    static assert(is(typeof((typeof(VEBroot!(new size_t[0])[]) r) => r[0]))); 
 }
-*/
 
 ///
 unittest
@@ -1632,22 +1666,11 @@ unittest
     
 }
 
-/// TODO:
-unittest
-{
-    // This unittest is for check of adding of big numbers
-    /* in debug mode about 1 min. 
-    size_t[] arr = [1, 2, 8, 2_147_483_647]; 
-    auto(arr); 
-    //*/
-}
-
 ///
 unittest
 {
-    import std.algorithm : sort, uniq; 
     //stress test
-    auto currentSeed = 2757158134U; //unpredictableSeed(); 
+    auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, ranges      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
@@ -1686,7 +1709,6 @@ unittest
     auto unique3 = N.iota.map!(i => uniform(0U, N, rndGenInUse)).array.sort.uniq;
     //TODO: auto unique3 = N.iota.map!(i => uniform(1U, N, rndGenInUse)).array.sort.uniq;
     unique3.each!(u => vT3.insert(u));
-    writeln("unique3: ", unique3); 
     unique3.each!(u => assert(u in vT3));
     assert(vT3.length == unique3.array.length); 
     auto sl3 = vT3[]; 
@@ -1697,8 +1719,6 @@ unittest
     }
     else if(unique3.array.front == 0 || unique3.array.back == vT3.universe)
     {
-        //writeln("unique3.array.length: ", unique3.array.length); 
-        //writeln("sl3.length: ", sl3.length); 
         assert(sl3.length == unique3.array.length + 1);
     }
     else
@@ -1707,9 +1727,6 @@ unittest
     }
     assert(sl3.length); 
     assert(!sl3.empty); 
-    "entering front".writeln; 
-
-    "sl3sl3:  ".writeln(sl3);
 
     unique3.each!(u => vT3.remove(u));
     assert(vT3.empty); 
@@ -1717,21 +1734,16 @@ unittest
 
     //writeln(vT3[].array); 
     //* Works. Duration in debug mode: about 35 seconds. 
-    //auto vTT = vebRoot(int.max - 1); 
+    //auto vTT = vebRoot((size_t(1) << 27) - 1); 
     //assert(vTT.insert(42)); 
+    //assert(42 in vTT);
     //*/
 }
 
-private struct VEBtree(Flag!"inclusive" inclusive, alias R : root!source, alias root, alias source)
+private struct VEBtree(Flag!"inclusive" inclusive, alias R : Root!Source, alias Root, alias Source)
 {
-    static if(is(typeof(source) == typeof(null)))
-    {
-        static assert(isBidirectionalRange!(typeof(this)));
-    }
-    else
-    {
-        static assert(isRandomAccessRange!(typeof(this)));
-    }
+    static assert(isBidirectionalRange!(typeof(this)));
+    
     R root; 
     
     static if(inclusive)
@@ -1849,14 +1861,15 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias R : root!source, alias 
         --length; 
     }
 
-    static if(!is(typeof(source) == typeof(null)))
+    static if(!is(typeof(Source) == typeof(null)))
     {
+        static assert(!is(typeof(Source) == typeof(null)));
         auto ref opIndex(size_t key)
         {
-            return root[key];
+            return root[key]; 
         }
 
-        void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!source))
+        void opIndexAssign(E)(auto ref E val, size_t key) if(is(E == ElementType!Source))
         {
             root[key] = val; 
         }
