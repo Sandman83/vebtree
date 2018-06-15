@@ -284,19 +284,19 @@ the public interface of the root is:
 
 front
 back
-opApply(size_t)
-(opApply(size_t, E))
+
+opApply(size_t) & (opApply(size_t, ref T))
 
 size_t capacity()
 size_t universe()
 size_t length() 
-
-
 dup
-(E* opIndex(key))
-VEBtree opIndex()
-VEBtree opCall()
+(opIndex & opIndexAssign)
+
+opIndex() & opCall()
+
 bool empty()
+opBinaryRight
 put = insert(size_t key) 
 remove(size_t key)
 predecessor(size_t key)
@@ -306,16 +306,15 @@ successor(size_t key)
 
 the public interface of the tree is: 
 
-front()
-popFront()
-back()
-popBack()
-
-
-(E* opIndex(size_t key))
+length
+front() & popFront()
+back() & popBack()
+predecessor & successor
 (void opIndex(auto ref E value, size_t key))
-empty()
+opApply
+empty 
 auto save()
+dup
 opEquals()
 */
 
@@ -393,6 +392,11 @@ unittest
 }
 
 auto vebRoot(T)(size_t universe)
+in
+{
+    assert(universe); 
+}
+do
 {
     return VEBroot!T(universe); 
 }
@@ -1140,10 +1144,7 @@ struct VEBroot(T = void)
         {
             res = prelength > cluster[treeOffset].length; 
             return value; 
-        }
-        
-
-        
+        }        
     }
 
     /**
@@ -1267,10 +1268,10 @@ struct VEBroot(T = void)
 
     private: 
     /*
-        This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
-        array can not be used to calculate the most of operations, so no explicit array is needed. The only remaining
-        property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
-        an intermediate node. // the first member behaves different, as the others, as it is the summary node. 
+    This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
+    array can not be used to calculate the most of operations, so no explicit array is needed. The only remaining
+    property is whether the pointer is set at all. From this property the node can decide, whether it is a leaf or
+    an intermediate node. // the first member behaves different, as the others, as it is the summary node. 
     */
 
     static if(!is(T == void))
@@ -2235,6 +2236,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
     {
         return root.successor(key); 
     }
+    
     static if(!is(Source[0] == void))
     {
         static assert(!is(Source[0] == void));
