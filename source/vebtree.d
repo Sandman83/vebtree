@@ -363,7 +363,10 @@ unittest
         assert(el in vTdeepCopy); 
     }
     auto shallowCopyFromRoot = vTdeepCopy; 
-    assert(shallowCopyFromRoot == exclusiveSlice.save); 
+    static assert(is(typeof(vTdeepCopy) : VEBroot!T, T...)); 
+    assert(!vTdeepCopy.empty); 
+    assert(vTdeepCopy.length == vTdeepCopy().length); 
+    assert(shallowCopyFromRoot == vTdeepCopy().save); 
 
     inclusiveSlice = vTdeepCopy[]; 
     auto shallowCopyFromSlice = inclusiveSlice.save;
@@ -379,14 +382,14 @@ unittest
     {
         assert(inclusiveSlice.front == vTdeepCopy.front); 
     }
+    
     assert(vTdeepCopy() == testArray);
     auto vTdeepCopy3 = vT.dup; 
     auto vTshallowCopy = vT; 
     assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
     vTdeepCopy.remove(vTdeepCopy.front.get); 
-    static assert(is(typeof(shallowCopyFromRoot.front) == typeof(vTdeepCopy.front))); 
-    
-    assert(shallowCopyFromRoot.front == vTdeepCopy.front);     
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+ 
     assert(vTshallowCopy == vT);
     assert(vTdeepCopy3 == vT); 
 
@@ -483,8 +486,7 @@ unittest
     }
 
     auto shallowCopyFromRoot = vTdeepCopy; 
-    assert(shallowCopyFromRoot == exclusiveSlice.save); 
-
+    assert(shallowCopyFromRoot == vTdeepCopy().save); 
     inclusiveSlice = vTdeepCopy[]; 
     auto shallowCopyFromSlice = inclusiveSlice.save;
     assert(inclusiveSlice.front == shallowCopyFromSlice.front);
