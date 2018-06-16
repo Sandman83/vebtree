@@ -157,7 +157,7 @@ size_t hSR(size_t value) @nogc nothrow
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: hSR.              "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: hSR               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto hSR = hSR(M); 
@@ -182,7 +182,7 @@ size_t lSR(size_t value) @nogc nothrow
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: lSR.              "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: lSR               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto lSR = lSR(M); 
@@ -211,7 +211,7 @@ do
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: high.             "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: high              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto U = nextPow2(M); 
@@ -237,7 +237,7 @@ do
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: low.              "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: low               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     auto U = nextPow2(M); 
@@ -258,7 +258,7 @@ private size_t index(size_t universe, size_t x, size_t y) @nogc nothrow
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: index.            "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: index             "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
     
@@ -277,6 +277,477 @@ in
 do
 {
     return VEBroot!()(universe); 
+}
+///
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: 1. use case       "); writeln("seed: ", currentSeed);} 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    
+    auto M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
+    auto N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
+    
+    auto vT = vebRoot(M); 
+    assert(vT.empty); 
+
+    size_t[] testArray = new size_t[N]; 
+    M.iota.randomCover(rndGenInUse).take(N)
+            .enumerate
+            .tee!(el => testArray[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
+
+    assert(vT.front == testArray.sort.front); 
+    assert(vT.back == testArray.sort.back); 
+    assert(vT().front == testArray.sort.front);  
+    assert(vT().back == testArray.sort.back); 
+    assert(vT[].front == 0); 
+    assert(vT[].back == vT.universe);
+    assert(vT.length == testArray.length); 
+    assert(vT() == testArray); 
+    assert(vT.capacity == baseSize); 
+    assert(vT.universe == M); 
+    assert(!vT.empty); 
+    testArray.each!(el => assert(el in vT)); 
+    size_t counter; 
+    for(auto el = vT.front; el != vT.back; el = vT.successor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        ++counter; 
+    }
+    for(auto el = vT.back; el != vT.front; el = vT.predecessor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        --counter; 
+    }
+    auto secondElementQ = vT.successor(testArray.sort[0]); 
+    if(!secondElementQ.isNull)
+    {
+        assert(testArray.sort.lowerBound(secondElementQ.get).length == 1); 
+    }
+
+    auto randomElement = testArray[uniform(0, testArray.length, rndGenInUse)]; 
+    assert(!vT.insert(randomElement)); 
+
+    auto vTdeepCopy = vT.dup; 
+    foreach(el; testArray)
+    {
+        vT.remove(el); 
+    }
+    assert(vT.empty); 
+    assert(!vT.length);
+    assert(vTdeepCopy.length == testArray.length); 
+
+    auto vTdeepCopy2 = vTdeepCopy.dup; 
+
+    vTdeepCopy2.remove(testArray[0]); 
+    assert(vTdeepCopy2.length == testArray.length - 1); 
+    auto inclusiveSlice = vTdeepCopy[]; 
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.length == testArray.length + 1); 
+    }
+    else
+    {
+        assert(inclusiveSlice.length == testArray.length + 2); 
+    }
+
+    auto exclusiveSlice = vTdeepCopy(); 
+    assert(exclusiveSlice.length == vTdeepCopy.length); 
+    foreach(el; vTdeepCopy)
+    {
+        assert(el in exclusiveSlice);
+    }
+    foreach(el; exclusiveSlice)
+    {
+        assert(el in vTdeepCopy); 
+    }
+    auto shallowCopyFromRoot = vTdeepCopy; 
+    assert(shallowCopyFromRoot == exclusiveSlice.save); 
+
+    inclusiveSlice = vTdeepCopy[]; 
+    auto shallowCopyFromSlice = inclusiveSlice.save;
+    assert(inclusiveSlice.front == shallowCopyFromSlice.front);
+    inclusiveSlice.popFront; 
+    assert(inclusiveSlice.front != shallowCopyFromSlice.front);
+    
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.successor(0));
+    }
+    else
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.front); 
+    }
+    assert(vTdeepCopy() == testArray);
+    auto vTdeepCopy3 = vT.dup; 
+    auto vTshallowCopy = vT; 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+    vTdeepCopy.remove(vTdeepCopy.front.get); 
+    static assert(is(typeof(shallowCopyFromRoot.front) == typeof(vTdeepCopy.front))); 
+    
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front);     
+    assert(vTshallowCopy == vT);
+    assert(vTdeepCopy3 == vT); 
+
+    assert(vT() == vT); 
+    assert(vT == vT());
+}
+///
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: 2. use case       "); writeln("seed: ", currentSeed);} 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    
+    auto M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
+    auto N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
+    
+    auto vT = vebRoot(M); 
+    assert(vT.empty); 
+
+    size_t[] testArray = new size_t[N]; 
+    
+    M.iota.randomCover(rndGenInUse).take(N)
+            .enumerate
+            .tee!(el => testArray[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
+
+    assert(vT.front == testArray.sort.front); 
+    assert(vT.back == testArray.sort.back); 
+    assert(vT().front == testArray.sort.front);  
+    assert(vT().back == testArray.sort.back); 
+    assert(vT[].front == 0); 
+    assert(vT[].back == vT.universe);
+    assert(vT.length == testArray.length); 
+    assert(vT() == testArray); 
+    assert(vT.capacity == M.nextPow2); 
+    assert(vT.universe == M); 
+    assert(!vT.empty); 
+    
+    testArray.each!(el => assert(el in vT)); 
+    size_t counter; 
+    for(auto el = vT.front; el != vT.back; el = vT.successor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        ++counter; 
+    }
+    for(auto el = vT.back; el != vT.front; el = vT.predecessor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        --counter; 
+    }
+
+    auto secondElementQ = vT.successor(testArray.sort[0]); 
+    if(!secondElementQ.isNull)
+    {
+        assert(testArray.sort.lowerBound(secondElementQ.get).length == 1); 
+    }
+
+    auto randomElement = testArray[uniform(0, testArray.length, rndGenInUse)]; 
+    assert(!vT.insert(randomElement)); 
+
+    auto vTdeepCopy = vT.dup; 
+    foreach(el; testArray)
+    {
+        vT.remove(el); 
+    }
+    assert(vT.empty); 
+    assert(!vT.length);
+    assert(vTdeepCopy.length == testArray.length); 
+
+    auto vTdeepCopy2 = vTdeepCopy.dup; 
+
+    vTdeepCopy2.remove(testArray[0]); 
+    assert(vTdeepCopy2.length == testArray.length - 1); 
+
+    auto inclusiveSlice = vTdeepCopy[]; 
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.length == testArray.length + 1); 
+    }
+    else
+    {
+        assert(inclusiveSlice.length == testArray.length + 2); 
+    }
+
+    auto exclusiveSlice = vTdeepCopy(); 
+    assert(exclusiveSlice.length == vTdeepCopy.length); 
+    foreach(el; vTdeepCopy)
+    {
+        assert(el in exclusiveSlice);
+    }
+    foreach(el; exclusiveSlice)
+    {
+        assert(el in vTdeepCopy); 
+    }
+
+    auto shallowCopyFromRoot = vTdeepCopy; 
+    assert(shallowCopyFromRoot == exclusiveSlice.save); 
+
+    inclusiveSlice = vTdeepCopy[]; 
+    auto shallowCopyFromSlice = inclusiveSlice.save;
+    assert(inclusiveSlice.front == shallowCopyFromSlice.front);
+    inclusiveSlice.popFront; 
+    assert(inclusiveSlice.front != shallowCopyFromSlice.front);
+    
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.successor(0));
+    }
+    else
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.front); 
+    }
+    
+    assert(vTdeepCopy() == testArray);
+    auto vTdeepCopy3 = vT.dup; 
+    auto vTshallowCopy = vT; 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+    vTdeepCopy.remove(vTdeepCopy.front.get); 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+ 
+    assert(vTshallowCopy == vT);
+    assert(vTdeepCopy3 == vT); 
+
+    assert(vT() == vT); 
+    assert(vT == vT());
+}
+///
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: 3. use case       "); writeln("seed: ", currentSeed);} 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    
+    auto M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
+    auto N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
+    
+    auto vT = vebRoot!size_t(M); 
+    assert(vT.empty); 
+
+    size_t[] testArray = new size_t[N]; 
+    
+    M.iota.randomCover(rndGenInUse).take(N)
+            .enumerate
+            .tee!(el => testArray[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
+
+    assert(vT.front == testArray.sort.front); 
+    assert(vT.back == testArray.sort.back); 
+    assert(vT().front == testArray.sort.front);  
+    assert(vT().back == testArray.sort.back); 
+    assert(vT[].front == 0); 
+    assert(vT[].back == vT.universe);
+    assert(vT.length == testArray.length); 
+    assert(vT() == testArray); 
+    assert(vT.capacity == baseSize); 
+    assert(vT.universe == M); 
+    assert(!vT.empty); 
+    testArray.each!(el => assert(el in vT)); 
+    size_t counter; 
+    for(auto el = vT.front; el != vT.back; el = vT.successor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        ++counter; 
+    }
+    for(auto el = vT.back; el != vT.front; el = vT.predecessor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        --counter; 
+    }
+    auto secondElementQ = vT.successor(testArray.sort[0]); 
+    if(!secondElementQ.isNull)
+    {
+        assert(testArray.sort.lowerBound(secondElementQ.get).length == 1); 
+    }
+    auto randomElement = testArray[uniform(0, testArray.length, rndGenInUse)]; 
+    assert(!vT.insert(randomElement)); 
+
+    auto vTdeepCopy = vT.dup; 
+    foreach(el; testArray)
+    {
+        vT.remove(el); 
+    }
+    assert(vT.empty); 
+    assert(!vT.length);
+    assert(vTdeepCopy.length == testArray.length); 
+    auto vTdeepCopy2 = vTdeepCopy.dup; 
+
+    vTdeepCopy2.remove(testArray[0]); 
+    assert(vTdeepCopy2.length == testArray.length - 1); 
+
+    auto inclusiveSlice = vTdeepCopy[]; 
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.length == testArray.length + 1); 
+    }
+    else
+    {
+        assert(inclusiveSlice.length == testArray.length + 2); 
+    }
+    auto exclusiveSlice = vTdeepCopy(); 
+    assert(exclusiveSlice.length == vTdeepCopy.length); 
+    foreach(el; vTdeepCopy)
+    {
+        assert(el in exclusiveSlice);
+    }
+    foreach(el; exclusiveSlice)
+    {
+        assert(el in vTdeepCopy); 
+    }
+    auto shallowCopyFromRoot = vTdeepCopy; 
+    static assert(is(typeof(vTdeepCopy) : VEBroot!T, T...)); 
+    assert(!vTdeepCopy.empty); 
+    assert(vTdeepCopy.length == vTdeepCopy().length); 
+    assert(shallowCopyFromRoot == vTdeepCopy().save); 
+
+    inclusiveSlice = vTdeepCopy[]; 
+    auto shallowCopyFromSlice = inclusiveSlice.save;
+    assert(inclusiveSlice.front == shallowCopyFromSlice.front);
+    inclusiveSlice.popFront; 
+    assert(inclusiveSlice.front != shallowCopyFromSlice.front);
+    
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.successor(0));
+    }
+    else
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.front); 
+    }
+    
+    assert(vTdeepCopy() == testArray);
+    auto vTdeepCopy3 = vT.dup; 
+    auto vTshallowCopy = vT; 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+    vTdeepCopy.remove(vTdeepCopy.front.get); 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+ 
+    assert(vTshallowCopy == vT);
+    assert(vTdeepCopy3 == vT); 
+
+    assert(vT() == vT); 
+    assert(vT == vT());
+}
+///
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    static if(vdebug){write("UT: 4. use case       "); writeln("seed: ", currentSeed);} 
+    rndGenInUse.seed(currentSeed); //initialize the random generator
+    
+    auto M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
+    auto N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
+    
+    auto vT = vebRoot!size_t(M); 
+    assert(vT.empty); 
+
+    size_t[] testArray = new size_t[N]; 
+    
+    M.iota.randomCover(rndGenInUse).take(N)
+            .enumerate
+            .tee!(el => testArray[el.index] = el.value)
+            .each!(el => vT.insert(el.value));
+    
+    assert(vT.front == testArray.sort.front); 
+    assert(vT.back == testArray.sort.back); 
+    assert(vT().front == testArray.sort.front);  
+    assert(vT().back == testArray.sort.back); 
+    assert(vT[].front == 0); 
+    assert(vT[].back == vT.universe);
+    assert(vT.length == testArray.length); 
+    assert(vT() == testArray); 
+    assert(vT.capacity == M.nextPow2); 
+    assert(vT.universe == M); 
+    assert(!vT.empty); 
+    
+    testArray.each!(el => assert(el in vT)); 
+    size_t counter; 
+    for(auto el = vT.front; el != vT.back; el = vT.successor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        ++counter; 
+    }
+    for(auto el = vT.back; el != vT.front; el = vT.predecessor(el.get))
+    {
+        assert(el.get == testArray.sort[counter]); 
+        --counter; 
+    }
+
+    auto secondElementQ = vT.successor(testArray.sort[0]); 
+    if(!secondElementQ.isNull)
+    {
+        assert(testArray.sort.lowerBound(secondElementQ.get).length == 1); 
+    }
+
+    auto randomElement = testArray[uniform(0, testArray.length, rndGenInUse)]; 
+    assert(!vT.insert(randomElement)); 
+
+    auto vTdeepCopy = vT.dup; 
+    foreach(el; testArray)
+    {
+        vT.remove(el); 
+    }
+    assert(vT.empty); 
+    assert(!vT.length);
+    assert(vTdeepCopy.length == testArray.length); 
+    
+    auto vTdeepCopy2 = vTdeepCopy.dup; 
+
+    vTdeepCopy2.remove(testArray[0]); 
+    assert(vTdeepCopy2.length == testArray.length - 1); 
+
+    auto inclusiveSlice = vTdeepCopy[]; 
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.length == testArray.length + 1); 
+    }
+    else
+    {
+        assert(inclusiveSlice.length == testArray.length + 2); 
+    }
+
+    auto exclusiveSlice = vTdeepCopy(); 
+    assert(exclusiveSlice.length == vTdeepCopy.length); 
+    foreach(el; vTdeepCopy)
+    {
+        assert(el in exclusiveSlice);
+    }
+    foreach(el; exclusiveSlice)
+    {
+        assert(el in vTdeepCopy); 
+    }
+
+    auto shallowCopyFromRoot = vTdeepCopy; 
+    assert(shallowCopyFromRoot == vTdeepCopy().save); 
+    inclusiveSlice = vTdeepCopy[]; 
+    auto shallowCopyFromSlice = inclusiveSlice.save;
+    assert(inclusiveSlice.front == shallowCopyFromSlice.front);
+    inclusiveSlice.popFront; 
+    assert(inclusiveSlice.front != shallowCopyFromSlice.front);
+    
+    if(0 in vTdeepCopy)
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.successor(0));
+    }
+    else
+    {
+        assert(inclusiveSlice.front == vTdeepCopy.front); 
+    }
+    
+    assert(vTdeepCopy() == testArray);
+    auto vTdeepCopy3 = vT.dup; 
+    auto vTshallowCopy = vT; 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+    vTdeepCopy.remove(vTdeepCopy.front.get); 
+    assert(shallowCopyFromRoot.front == vTdeepCopy.front); 
+ 
+    assert(vTshallowCopy == vT);
+    assert(vTdeepCopy3 == vT); 
+
+    assert(vT() == vT); 
+    assert(vT == vT());
 }
 
 /**
@@ -302,8 +773,6 @@ remove(size_t key)
 predecessor(size_t key)
 successor(size_t key)
 
-
-
 the public interface of the tree is: 
 
 length
@@ -322,7 +791,7 @@ opEquals()
 unittest
 {
     auto currentSeed = unpredictableSeed(); // 83_843; 898_797_859; 
-    static if(vdebug){write("UT: vN, opIn_r.       "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: vN, opBinaryIn    "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     auto value = uniform(0U, size_t.max, rndGenInUse);
@@ -344,7 +813,7 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: vN, predecessor.  "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: vN, predecessor   "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto v = uniform(2U, testedSize, rndGenInUse); //set universe size to some integer. 
     auto x = uniform(1U, baseSize, rndGenInUse);
@@ -371,7 +840,7 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: vN, successor.    "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: vN, successor     "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     auto v = uniform(0U, size_t.max, rndGenInUse); //set universe size to some integer. 
     auto x = uniform(0U, baseSize, rndGenInUse);
@@ -473,7 +942,7 @@ struct VEBroot(T = void)
         }
     }
 
-    @property size_t universe()
+    @property size_t universe() const
     in
     {
         assert(stats !is null); 
@@ -1266,6 +1735,57 @@ struct VEBroot(T = void)
         return retVal; 
     }
 
+    // comparing to its range does not need another operator (?) ok... 
+    /* 
+    bool opEquals(S)(auto ref const S slice) const if(is(TemplateOf!(S) == VEBtree))
+    {
+        assert(0); 
+    }
+    */
+
+
+    bool opEquals(O)(ref const O input) const if(is(Unqual!O == Unqual!(typeof(this))))
+    {
+        // short circuit, if pointers are the same
+        if(stats == input.stats)
+        {
+            assert(val == input.val); 
+            return true; 
+        }
+
+        // otherwise we have to check the whole structure.
+        if(*stats != *input.stats)
+        {
+            return false; 
+        }
+        if(*val != *input.val)
+        {
+            return false; 
+        }
+        if(!isLeaf)
+        {
+            if(summary != input.summary)
+            {
+                return false; 
+            }
+            foreach(i, ref c; cluster)
+            {
+                if(c != input.cluster[i])
+                {
+                    return false; 
+                }
+            }    
+        }
+        else
+        {
+            if(!input.isLeaf)
+            {
+                return false; 
+            }
+        }
+        return true; 
+    }
+
     private: 
     /*
     This pointer acts as an array to nodes like this one. As the universe size is not provided, the length of the
@@ -1290,7 +1810,7 @@ struct VEBroot(T = void)
     size_t* stats; 
     
     // property returning the summary node 
-    @property auto ref summary() // @nogc nothrow 
+    @property auto ref summary() inout// @nogc nothrow 
     in
     {
         assert(!isLeaf);
@@ -1301,7 +1821,7 @@ struct VEBroot(T = void)
     }
     
     // property returning the cluster array 
-    @property auto ref cluster() // @nogc nothrow 
+    @property auto ref cluster() inout// @nogc nothrow 
     in
     {
         assert(!isLeaf);
@@ -1409,7 +1929,7 @@ struct VEBroot(T = void)
     }
 
     /** convinience method to check, if the node belongs to the lowest level in the tree */
-    @property bool isLeaf() // @nogc nothrow 
+    @property bool isLeaf() const // @nogc nothrow 
     in
     {
         assert(stats !is null); 
@@ -1583,7 +2103,7 @@ unittest
 {
     
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: vT, exportTree.   "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: vT, [], ()        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
@@ -1679,7 +2199,7 @@ unittest
 unittest
 {
     auto currentSeed = unpredictableSeed();
-    static if(vdebug){write("UT: rand, succ.       "); writeln("seed: ", currentSeed);} 
+    static if(vdebug){write("UT: rand, succ        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
     auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
@@ -2112,6 +2632,11 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
     
     R root; 
     
+    auto  opBinaryRight(string op)(size_t key) if(op == "in")  // @nogc nothrow 
+    {
+        return key in root; 
+    }
+
     static if(inclusive)
     {
         size_t frontKey; 
@@ -2176,7 +2701,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
     auto popFront()
     in
     {
-        assert(length); 
+        assert(!empty); 
     }
     do
     {
@@ -2252,9 +2777,31 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         {
             int result; 
             
-            for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
+            //for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
+            for(auto leading = front; !empty; popFront) 
             {
                 result = operations(leading.get, *root[leading.get]); 
+
+                if(result)
+                {
+                    break; 
+                }
+            }
+
+            return result;
+        }
+
+        /**
+        opApply method in case of present source for iterating over key value pairs
+        */
+        int opApply(scope int delegate(size_t) /*@nogc*/ operations) //@nogc
+        {
+            int result; 
+            
+            //for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
+            for(auto leading = front; !empty; popFront) 
+            {
+                result = operations(leading.get); 
 
                 if(result)
                 {
