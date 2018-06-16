@@ -518,7 +518,7 @@ unittest
 ///
 unittest
 {
-    auto currentSeed = unpredictableSeed();
+    auto currentSeed = 2139424061U; //unpredictableSeed();
     static if(vdebug){write("UT: 3. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
@@ -529,13 +529,23 @@ unittest
     assert(vT.empty); 
 
     size_t[] testArray = new size_t[N]; 
+    size_t[] testValArray = new size_t[N]; 
+    testValArray.each!((ref el) => el = uniform(0UL, size_t.max, rndGenInUse)); 
     
     M.iota.randomCover(rndGenInUse).take(N)
             .enumerate
             .tee!(el => testArray[el.index] = el.value)
-            .each!(el => vT.insert(el.value));
+            .each!(el => vT.insert(el.value, testValArray[el.index]));
 
     assert(vT.front == testArray.sort.front); 
+    writeln(testValArray); 
+    foreach(el; vT())
+    {
+        write(*vT[el]); 
+        write(" ");
+    }
+    writeln(); 
+    assert(*vT[vT.front] == testValArray[0]);
     assert(vT.back == testArray.sort.back); 
     assert(vT().front == testArray.sort.front);  
     assert(vT().back == testArray.sort.back); 
@@ -1250,7 +1260,7 @@ struct VEBroot(T = void)
                 {
                     writeln("dataArr[key]: ", dataArr[key]); 
                     dataArr[key] = &value[0]; 
-                    writeln("dataArr[key]: ", dataArr[key]); 
+                    writeln("*dataArr[key]: ", *dataArr[key]); 
                 }
             }
             return res; 
