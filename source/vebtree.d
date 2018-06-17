@@ -61,7 +61,8 @@ import std.traits; // used for generating the tree given an iterable
 import std.range; 
 import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
-import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference, min, max; 
+import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference, min, max, filter, canFind, 
+                        maxIndex; 
 
 private enum vdebug = true; 
 
@@ -518,7 +519,7 @@ unittest
 ///
 unittest
 {
-    auto currentSeed = 2139424061U; //unpredictableSeed();
+    auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: 3. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
@@ -536,17 +537,12 @@ unittest
             .enumerate
             .tee!(el => testArray[el.index] = el.value)
             .each!(el => vT.insert(el.value, testValArray[el.index]));
-
-    assert(vT.front == testArray.sort.front); 
-    writeln(testValArray); 
-    foreach(el; vT())
-    {
-        write(*vT[el]); 
-        write(" ");
-    }
-    writeln(); 
-    assert(*vT[vT.front] == testValArray[0]);
-    assert(vT.back == testArray.sort.back); 
+    
+    assert(vT.front == testArray.dup.sort.front); 
+    
+    assert(vT.length == testValArray.length); 
+    vT.each!((key, value) => assert(testValArray.canFind(value)));
+    assert(*vT[vT.back] == testValArray[testArray.maxIndex]); 
     assert(vT().front == testArray.sort.front);  
     assert(vT().back == testArray.sort.back); 
     assert(vT[].front == 0); 
@@ -1258,9 +1254,7 @@ struct VEBroot(T = void)
             {
                 if(res)
                 {
-                    writeln("dataArr[key]: ", dataArr[key]); 
                     dataArr[key] = &value[0]; 
-                    writeln("*dataArr[key]: ", *dataArr[key]); 
                 }
             }
             return res; 
@@ -1310,7 +1304,7 @@ struct VEBroot(T = void)
 
             static if(T.length)
             {
-                auto tmpVal = value[0]; 
+                auto tmpVal = &value[0]; 
             }
 
             key = front.get;
@@ -1322,7 +1316,7 @@ struct VEBroot(T = void)
             
             static if(T.length)
             {
-                front(tmpKey, tmpVal);
+                front(tmpKey, *tmpVal);
             }
             else
             {
@@ -1337,7 +1331,7 @@ struct VEBroot(T = void)
             
             static if(T.length)
             {
-                auto tmpVal = value[0]; 
+                auto tmpVal = &value[0]; 
             }
             
             key = back.get; 
@@ -1349,7 +1343,7 @@ struct VEBroot(T = void)
 
             static if(T.length)
             {
-                back(tmpKey, tmpVal); 
+                back(tmpKey, *tmpVal); 
             }
             else
             {
