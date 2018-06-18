@@ -14,7 +14,7 @@ inserting, deletion, membership testing, neighborhood searching. All queries are
 capacity of the tree, set on initialization. 
 2. Tree contains keys and values. Additionally to the above operations the indexing operation is supported. It 
 yields the pointer to a stored object, if the key is contained in the tree, otherwise null. 
-For optimization purposes, the size limit is size_t.max/2 + 1. The tree was tested on 64- and 32-bit arch. 
+For optimization purposes, the size limit is halfSizeT.max + 1. The tree was tested on 64- and 32-bit arch. 
 So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
 */
 
@@ -54,20 +54,29 @@ emulating bigger entities.
 
 module vebtree; 
 
-import std.typecons; // used for Nullable 
-import core.bitop; // used for bit operations 
-import std.bitmanip; // used for bitfields 
-import std.traits; // used for generating the tree given an iterable
+import std.typecons : Nullable; 
+import core.bitop;
+import std.traits;
 import std.range; 
 import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
-import std.algorithm : each, map, until, find, sort, uniq, sum, setSymmetricDifference, min, max, filter, canFind, 
-                        maxIndex; 
+import std.algorithm.iteration : each, map, uniq, sum, filter;
+import std.algorithm.searching : until, find, canFind, maxIndex; 
+import std.algorithm.sorting : sort; 
+import std.algorithm.setops : setSymmetricDifference; 
+import std.algorithm.comparison : min, max; 
+                        
 
 private enum vdebug = true; 
 
 version(unittest)
 {
+    import std.random; 
+    import std.datetime.stopwatch; 
+    import std.conv : to;
+    import std.container; // red black tree may be used in unittests for comparison.
+    import std.math : sqrt; 
+
     static if(vdebug)
     {
         import std.stdio;
@@ -83,11 +92,6 @@ version(unittest)
 
     /// precalculated powers of two table for unit testing
     enum powersOfTwo = iota(0, CHAR_BIT * size_t.sizeof).map!(a => size_t(1) << a); 
-    import std.random; 
-    import std.datetime.stopwatch; 
-    import std.conv : to;
-    import std.container; // red black tree may be used in unittests for comparison.
-    import std.math : sqrt; 
     
     Random rndGenInUse; 
 
@@ -160,7 +164,7 @@ unittest
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: hSR               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    size_t M = uniform(1U,halfSizeT.max, rndGenInUse); //set universe size to some integer. 
     auto hSR = hSR(M); 
 
     assert((hSR & (hSR - 1)) == 0); 
@@ -185,14 +189,14 @@ unittest
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: lSR               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    size_t M = uniform(1U,halfSizeT.max, rndGenInUse); //set universe size to some integer. 
     auto lSR = lSR(M); 
     
     assert((lSR & (lSR - 1)) == 0); 
     assert(lSR * lSR < M);
-    auto check = powersOfTwo.find(lSR).array; 
+    auto check = powersOfTwo.find(lSR); 
     
-    if(lSR < size_t.max/2) assert((check[1]) > sqrt(to!float(M))); 
+    if(lSR < halfSizeT.max) assert((check.drop(1).front) > sqrt(to!float(M))); 
 }
 
 /*
@@ -208,14 +212,14 @@ do
 {
     return value >> (bsr(universe) / 2);
 }
-///
+//
 unittest
 {
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: high              "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    auto U = nextPow2(M); 
+    size_t M = uniform(1U,halfSizeT.max, rndGenInUse); //set universe size to some integer. 
+    size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
 
     assert(high(U, x) == x / lSR(U)); 
@@ -234,20 +238,20 @@ do
 {
     return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
 }
-///
+//
 unittest
 {
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: low               "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(1U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
-    auto U = nextPow2(M); 
+    size_t M = uniform(1U,halfSizeT.max, rndGenInUse); //set universe size to some integer. 
+    size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
 
     assert(low(U, x) == (x & (lSR(U) - 1)));
 }
 
-/**
+/*
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
 relation holds: x = index(high(x), low(x)). This is the ideal indexing function of the tree. 
 */
@@ -255,15 +259,15 @@ private size_t index(size_t universe, size_t x, size_t y) @nogc nothrow
 {
     return (x * lSR(universe) + y);
 }
-///
+//
 unittest
 {
     auto currentSeed = unpredictableSeed();
     static if(vdebug){write("UT: index             "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(0U,size_t.max/2, rndGenInUse); //set universe size to some integer. 
+    size_t M = uniform(0U,halfSizeT.max, rndGenInUse); //set universe size to some integer. 
     
-    auto U = nextPow2(M); 
+    size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
     
     assert(index(U, high(U, x), low(U, x)) == x); 
@@ -286,8 +290,8 @@ unittest
     static if(vdebug){write("UT: 1. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    auto M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
-    auto N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
+    size_t M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
+    size_t N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
     
     auto vT = vebRoot(M); 
     assert(vT.empty); 
@@ -342,7 +346,7 @@ unittest
     auto vTdeepCopy2 = vTdeepCopy.dup; 
 
     vTdeepCopy2.remove(testArray[0]); 
-    assert(vTdeepCopy2.length == testArray.length - 1); 
+    assert(vTdeepCopy2.length + 1 == testArray.length); 
     auto inclusiveSlice = vTdeepCopy[]; 
     if(0 in vTdeepCopy)
     {
@@ -404,8 +408,8 @@ unittest
     static if(vdebug){write("UT: 2. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    auto M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
-    auto N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
+    size_t M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
+    size_t N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
     
     auto vT = vebRoot(M); 
     assert(vT.empty); 
@@ -463,7 +467,7 @@ unittest
     auto vTdeepCopy2 = vTdeepCopy.dup; 
 
     vTdeepCopy2.remove(testArray[0]); 
-    assert(vTdeepCopy2.length == testArray.length - 1); 
+    assert(vTdeepCopy2.length + 1 == testArray.length); 
 
     auto inclusiveSlice = vTdeepCopy[]; 
     if(0 in vTdeepCopy)
@@ -516,6 +520,43 @@ unittest
     assert(vT() == vT); 
     assert(vT == vT());
 }
+
+/**
+convenience function to get a van emde boas tree, containing pointers to data of type T
+*/
+auto vebRoot(T)(size_t universe)
+in
+{
+    assert(universe); 
+}
+do
+{
+    return VEBroot!T(universe); 
+}
+/// 
+unittest
+{
+    auto vr = vebRoot!size_t(100);   
+    assert(vr.empty); 
+    
+    size_t input = 42; 
+    
+    vr.insert(3, input); 
+    assert(vr.front == 3); 
+    assert(*vr[3] == 42);
+    
+    size_t input2 = 73; 
+    vr.insert(3, input2); 
+    assert(*vr[3] == 42);
+    *vr[3] = 73; 
+    assert(*vr[3] == 73);
+
+    assert(vr[8] is null); 
+    vr[15] = input2;
+    assert(vr[15] !is null); 
+    vr.remove(15); 
+    assert(vr[15] is null); 
+}
 ///
 unittest
 {
@@ -523,8 +564,8 @@ unittest
     static if(vdebug){write("UT: 3. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    auto M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
-    auto N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
+    size_t M = uniform(2U, baseSize, rndGenInUse); //set universe size to some integer (small). 
+    size_t N = uniform(1U, M, rndGenInUse); //set universe size to some integer (small). 
     
     auto vT = vebRoot!size_t(M); 
     assert(vT.empty); 
@@ -583,7 +624,7 @@ unittest
     auto vTdeepCopy2 = vTdeepCopy.dup; 
 
     vTdeepCopy2.remove(testArray[0]); 
-    assert(vTdeepCopy2.length == testArray.length - 1); 
+    assert(vTdeepCopy2.length + 1== testArray.length); 
 
     auto inclusiveSlice = vTdeepCopy[]; 
     if(0 in vTdeepCopy)
@@ -645,21 +686,29 @@ unittest
     static if(vdebug){write("UT: 4. use case       "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
     
-    auto M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
-    auto N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
+    size_t M = uniform(baseSize + 1, testedSize, rndGenInUse); //set universe size to some integer (small). 
+    size_t N = uniform(1U, min(M, allowedArraySize), rndGenInUse); //set universe size to some integer (small). 
     
     auto vT = vebRoot!size_t(M); 
     assert(vT.empty); 
 
     size_t[] testArray = new size_t[N]; 
+    size_t[] testValArray = new size_t[N]; 
+    testValArray.each!((ref el) => el = uniform(0UL, size_t.max, rndGenInUse)); 
     
     M.iota.randomCover(rndGenInUse).take(N)
             .enumerate
             .tee!(el => testArray[el.index] = el.value)
-            .each!(el => vT.insert(el.value));
+            .each!(el => vT.insert(el.value, testValArray[el.index])); 
     
-    assert(vT.front == testArray.sort.front); 
-    assert(vT.back == testArray.sort.back); 
+    assert(vT.front == testArray.dup.sort.front); 
+    
+    assert(vT.length == testValArray.length); 
+    assert(!vT.front.isNull);
+    assert(vT[vT.front.get] !is null); 
+    vT.each!((key, ref value) => assert(testValArray.canFind(value)));
+    
+    assert(*vT[vT.back] == testValArray[testArray.maxIndex]); 
     assert(vT().front == testArray.sort.front);  
     assert(vT().back == testArray.sort.back); 
     assert(vT[].front == 0); 
@@ -682,13 +731,11 @@ unittest
         assert(el.get == testArray.sort[counter]); 
         --counter; 
     }
-
     auto secondElementQ = vT.successor(testArray.sort[0]); 
     if(!secondElementQ.isNull)
     {
         assert(testArray.sort.lowerBound(secondElementQ.get).length == 1); 
     }
-
     auto randomElement = testArray[uniform(0, testArray.length, rndGenInUse)]; 
     assert(!vT.insert(randomElement)); 
 
@@ -700,11 +747,10 @@ unittest
     assert(vT.empty); 
     assert(!vT.length);
     assert(vTdeepCopy.length == testArray.length); 
-    
     auto vTdeepCopy2 = vTdeepCopy.dup; 
 
     vTdeepCopy2.remove(testArray[0]); 
-    assert(vTdeepCopy2.length == testArray.length - 1); 
+    assert(vTdeepCopy2.length + 1 == testArray.length); 
 
     auto inclusiveSlice = vTdeepCopy[]; 
     if(0 in vTdeepCopy)
@@ -715,7 +761,6 @@ unittest
     {
         assert(inclusiveSlice.length == testArray.length + 2); 
     }
-
     auto exclusiveSlice = vTdeepCopy(); 
     assert(exclusiveSlice.length == vTdeepCopy.length); 
     foreach(el; vTdeepCopy)
@@ -726,9 +771,12 @@ unittest
     {
         assert(el in vTdeepCopy); 
     }
-
     auto shallowCopyFromRoot = vTdeepCopy; 
+    static assert(is(typeof(vTdeepCopy) : VEBroot!T, T...)); 
+    assert(!vTdeepCopy.empty); 
+    assert(vTdeepCopy.length == vTdeepCopy().length); 
     assert(shallowCopyFromRoot == vTdeepCopy().save); 
+
     inclusiveSlice = vTdeepCopy[]; 
     auto shallowCopyFromSlice = inclusiveSlice.save;
     assert(inclusiveSlice.front == shallowCopyFromSlice.front);
@@ -757,43 +805,6 @@ unittest
     assert(vT() == vT); 
     assert(vT == vT());
 }
-
-/**
-the public interface of the root is: 
-
-front
-back
-
-opApply(size_t) & (opApply(size_t, ref T))
-
-size_t capacity()
-size_t universe()
-size_t length() 
-dup
-(opIndex & opIndexAssign)
-
-opIndex() & opCall()
-
-bool empty()
-opBinaryRight
-put = insert(size_t key) 
-remove(size_t key)
-predecessor(size_t key)
-successor(size_t key)
-
-the public interface of the tree is: 
-
-length
-front() & popFront()
-back() & popBack()
-predecessor & successor
-(void opIndex(auto ref E value, size_t key))
-opApply
-empty 
-auto save()
-dup
-opEquals()
-*/
 
 //
 unittest
@@ -868,71 +879,28 @@ unittest
     if(!found) assert(vN.successor(x).isNull);
 }
 
-auto vebRoot(T)(size_t universe)
-in
-{
-    assert(universe); 
-}
-do
-{
-    return VEBroot!T(universe); 
-}
-/// 
-unittest
-{
-    auto vr = vebRoot!size_t(100);   
-    assert(vr.empty); 
-    
-    size_t input = 42; 
-    
-    vr.insert(3, input); 
-    assert(vr.front == 3); 
-    assert(*vr[3] == 42);
-    
-    size_t input2 = 73; 
-    vr.insert(3, input2); 
-    assert(*vr[3] == 42);
-    *vr[3] = 73; 
-    assert(*vr[3] == 73);
-
-    assert(vr[8] is null); 
-    vr[15] = input2;
-    assert(vr[15] !is null); 
-    vr.remove(15); 
-    assert(vr[15] is null); 
-}
-
-/*
-private auto vebRoot(alias source)(size_t universe)
-{
-    static if(!is(typeof(source) == typeof(null)))
-    {
-        assert(source.length == universe); 
-        return vebRoot!(source.dup)(universe); 
-    }
-    else
-    {
-        return vebRoot!(universe); 
-    }
-}
-*/
 /**
-    This is the struct to represent a VEB tree node. As memebers it contains a value and a pointer to the children
-    array. As the pointer does not know the size of the array, it has to be passed in all methods, which require an
-    access to it. 
-    Dependent from the (universe) size passed in a method the stored value will be interpretated in two different ways: 
-    If the parameter passed shows, that the universe size is below the bit size of the stored value, then, it can be
-    handled as a bit array and all operations decay to operations defined in core.bitop. This case correspond to
-    the state of the node being a leaf. No children exist and the pointer should stay uninitialized
-    Otherwise, the value is interpretated as two values, the minimum and maximum stored at the same place in memory. The
-    minimum and maximum shows, which range is achievable through this node. The parameters passed to a function of the
-    node have to be well chosen, to hit the appropriate child. 
-    The first element of the children array, if present is handled different. According to literature, it has the role
-    of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
-    level during an access. 
+This is the struct to represent a VEB tree node. Its members are
+- a pointer to the stats: universe and current inserted element amount 
+- a pointer to the min and max values. These pointee is used as a bit array in the leaf nodes. 
+- a poitner (or array) to the child nodes, in case the node is not a leaf node
+- a pointer (an array) to the data pointers, in case the tree is used with data. 
+Dependent from the universe size passed in a method the stored value will be interpretated in two different ways: 
+If the parameter passed shows, that the universe size is below the bit size of the stored value, then, it can be
+handled as a bit array and all operations decay to operations defined in core.bitop. This case correspond to
+the state of the node being a leaf. No children exist and the pointer should stay uninitialized
+Otherwise, the value is interpretated as two values, the minimum and maximum stored at the same place in memory. The
+minimum and maximum shows, which range is achievable through this node. The parameters passed to a function of the
+node have to be well chosen, to hit the appropriate child. 
+The first element of the children array, if present is handled different. According to literature, it has the role
+of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
+level during an access. 
 */
 struct VEBroot(T = void)
 {
+    /**
+    yields the next power of two, based un universe size
+    */
     @property size_t capacity()
     in
     {
@@ -950,6 +918,9 @@ struct VEBroot(T = void)
         }
     }
 
+    /**
+    yields the universe size of a node. The root has the unvierse size, defined on tree creation
+    */
     @property size_t universe() const
     in
     {
@@ -960,6 +931,9 @@ struct VEBroot(T = void)
         return (*stats & higherMask) >> (size_t.sizeof * CHAR_BIT/2);     
     }
 
+    /**
+    yields the current inserted elements under the node, including the two elements of the node itself. 
+    */
     @property size_t length()
     in
     {
@@ -992,6 +966,13 @@ struct VEBroot(T = void)
 
     static if(!is(T == void))
     {
+        /*
+        TODO: as a further optimization, the accessing functions front, back, successor, predecessor
+        could be designed as templates, returning a reference to the stored value as a ref/out parameter.
+        This seems to be somewhat strange, as it would be unsure, whether the init comes from the defaultness of the 
+        param or from the fact, that the default value is stored by chance in the tree. 
+        In the form it is now, two calls (with constant time) are needed: first to get the key, next to get the value.
+        */
         /**
         opApply method in case of present source for iterating over key value pairs
         */
@@ -1001,7 +982,8 @@ struct VEBroot(T = void)
         
             for(auto leading = front; !leading.isNull; leading = successor(leading.get)) 
             {
-                result = operations(leading.get, *(dataArr[leading.get])); 
+                assert(this[leading.get] !is null); 
+                result = operations(leading.get, *(this[leading.get])); 
 
                 if(result)
                 {
@@ -1017,7 +999,7 @@ struct VEBroot(T = void)
         method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
         mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
-    @property Response front() // @nogc nothrow 
+    @property Response front() @nogc nothrow
     {
         // define the result as a nullable 
         typeof(return) retVal; 
@@ -1070,6 +1052,9 @@ struct VEBroot(T = void)
         return retVal;  
     }
 
+    /**
+    yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
+    */
     typeof(this) dup()
     {
         auto copy = this;
@@ -1105,6 +1090,10 @@ struct VEBroot(T = void)
 
     static if(!is(T == void))
     {
+        /**
+        method exists only, when in data mode. Then, yields a pointer to the data, associated with the key. If no data 
+        is associated or the key is not in the tree, yields null. 
+        */
         auto ref opIndex(size_t key) @nogc
         {
             assert(universe); 
@@ -1147,17 +1136,26 @@ struct VEBroot(T = void)
             }
         }
 
+        /**
+        operator is used for re assigning data, if the key already exists. 
+        */
         void opIndexAssign(ref T value, size_t key)
         {
             insert(key, value); 
         }
     }
 
+    /**
+    []-slicing. Yields a "random access range" with the content of the tree, always containing zero and universe as keys
+    */
     auto opIndex()
     {
         return VEBtree!(Yes.inclusive, typeof(this))(this);  
     }
 
+    /**
+    ()-slicing. Yields a "random access range" with the content of the tree. Keys can be isNull. 
+    */
     auto opCall()
     {
         return VEBtree!(No.inclusive, typeof(this))(this);  
@@ -1166,7 +1164,7 @@ struct VEBroot(T = void)
     /** 
     method to check whether the current node holds a value
     */
-    @property bool empty() // @nogc nothrow 
+    @property bool empty() @nogc nothrow
     in
     {
         assert(val !is null); 
@@ -1232,11 +1230,29 @@ struct VEBroot(T = void)
     bool insert(T...)(size_t key, ref T value) 
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
-        
+        debug
+        {
+            static if(T.length)
+            {
+                bool insertingNewVal = this[key] is null ? true : false; 
+            }
+        }   
         typeof(return) res; 
         scope(exit)
         {
             length = length + res; 
+            debug
+            {
+                static if(T.length)
+                {
+                    //writeln("value[0]: ")
+                    assert(this[key] !is null);
+                    if(insertingNewVal)
+                    {
+                        assert(*this[key] == value[0]);
+                    }
+                }
+            }
         }
         
         if(key > capacity)
@@ -1741,15 +1757,14 @@ struct VEBroot(T = void)
         return retVal; 
     }
 
-    // comparing to its range does not need another operator (?) ok... 
-    /* 
-    bool opEquals(S)(auto ref const S slice) const if(is(TemplateOf!(S) == VEBtree))
-    {
-        assert(0); 
-    }
+    /**
+    dummy toHash method. 
     */
+    size_t toHash() const { assert(0); }
 
-
+    /**
+    comparison operator for the recursive node of the same kind. 
+    */
     bool opEquals(O)(ref const O input) const if(is(Unqual!O == Unqual!(typeof(this))))
     {
         // short circuit, if pointers are the same
@@ -1935,7 +1950,7 @@ struct VEBroot(T = void)
     }
 
     /** convinience method to check, if the node belongs to the lowest level in the tree */
-    @property bool isLeaf() const // @nogc nothrow 
+    @property bool isLeaf() @nogc nothrow inout
     in
     {
         assert(stats !is null); 
@@ -2112,7 +2127,7 @@ unittest
     static if(vdebug){write("UT: vT, [], ()        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    size_t M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     
@@ -2208,7 +2223,7 @@ unittest
     static if(vdebug){write("UT: rand, succ        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
 
-    auto M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
+    size_t M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
     assert(vT.capacity == nextPow2(M-1)); 
 
@@ -2246,7 +2261,7 @@ unittest
     auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, pred        "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    size_t M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.back; 
@@ -2273,7 +2288,7 @@ unittest
     auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, remove      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    size_t M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     assert(M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum == vT.length); 
     auto i = vT.front;
@@ -2297,7 +2312,7 @@ unittest
 ///
 unittest
 {
-    auto M = testedSize; 
+    size_t M = testedSize; 
     auto vT = vebRoot(M); 
     vT.insert(0x000f); 
     assert(vT.predecessor(0x000f).isNull);
@@ -2325,7 +2340,7 @@ unittest
 ///
 unittest
 {
-    auto M = testedSize; 
+    size_t M = testedSize; 
     auto vT = vebRoot(M); 
     vT.insert(0xf000); 
     assert(0xf000 in vT); 
@@ -2359,7 +2374,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
+    size_t M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
 
     size_t[] arr; 
@@ -2410,7 +2425,6 @@ unittest
             VEB: 2 secs, 382 ms, 588 μs, and 8 hnsecs
     */
     /*
-    import std.stdio; 
 
     writeln("size of tree: ", vT2.capacity); 
     writeln("howMuchFilled: ", howMuchFilled);
@@ -2431,7 +2445,7 @@ unittest
     auto currentSeed = unpredictableSeed(); 
     static if(vdebug){write("UT: rand, member      "); writeln("seed: ", currentSeed);} 
     rndGenInUse.seed(currentSeed); //initialize the random generator
-    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer.
+    size_t M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer.
     size_t[] sourceArr; 
     sourceArr.length = M; 
     // generate a random array as the source for the tree
@@ -2460,7 +2474,7 @@ unittest
     static if(vdebug){write("UT: rand, opSlice     "); writeln("seed: ", currentSeed);}  
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 16", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
-    auto M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
+    size_t M = uniform(2U, allowedArraySize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     size_t[] arr; 
     arr.length = 16 * vT.capacity/typeof(vT).sizeof; 
@@ -2478,9 +2492,8 @@ unittest
     static assert(!isInputRange!(VEBroot!())); 
     static assert(isIterable!(VEBroot!()));
     static assert(isBidirectionalRange!(typeof(VEBroot!()[])));
-    auto root = vebRoot!(size_t)(4);
-    auto res = root[2];
-    //static assert(is(typeof((typeof(VEBroot!(new size_t[0])[]) r) => r[0]))); 
+    static assert(is(typeof(vebRoot!(size_t)(4)[2])));
+    static assert(!is(typeof(vebRoot(4)[2])));
 }
 
 ///
@@ -2522,7 +2535,6 @@ unittest
     void fill29(){ auto vT = vebRoot(1 << 29); }
     void fill30(){ auto vT = vebRoot(1 << 30); }
     
-    import std.stdio; 
     auto r = benchmark!(fill16, fill17, fill18, fill19, fill20, fill21, fill22, fill23, fill24, fill25, fill26, fill27,
         fill28, fill29, fill30)(1);
     //auto r = benchmark!(fill1)(1); 
@@ -2570,7 +2582,7 @@ unittest
     rndGenInUse.seed(currentSeed); //initialize the random generator
     // do not use more then "1 << 15", as for the red-black tree the insertion duration is almost 4 (!) minutes. 
     // last test says: see below. 
-    auto M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
+    size_t M = uniform(2U, testedSize, rndGenInUse); // set universe size to some integer. 
     auto vT = vebRoot(M); 
     /*testing the range methods*/
     assert(vT.empty); 
@@ -2587,35 +2599,35 @@ unittest
     uniqueArr.each!(el => vTnew.insert(el)); 
 
     assert(!vTnew.empty); 
-    assert(vTnew.length == uniqueArr.array.length); 
+    assert(vTnew.length == uniqueArr.walkLength); 
     auto vT2 = vTnew; 
     static assert(isIterable!(typeof(vTnew))); 
     auto slice = vTnew(); 
     assert(slice.front == uniqueArr.front); 
-    assert(vTnew() == uniqueArr.array); 
+    assert(vTnew() == uniqueArr); 
     assert(!vTnew.empty);
     assert(!vT2.empty);
 
     size_t N = 100; 
     auto vT3 = vebRoot(N); 
     assert(vT3.empty); 
-    auto unique3 = N.iota.map!(i => uniform(0U, N, rndGenInUse)).array.sort.uniq;
+    auto unique3 = N.iota.map!(i => uniform(0U, N, rndGenInUse)).array.sort.uniq.array;
     unique3.each!(u => vT3.insert(u));
     unique3.each!(u => assert(u in vT3));
-    assert(vT3.length == unique3.array.length); 
+    assert(vT3.length == unique3.length); 
     auto sl3 = vT3[]; 
     
-    if(unique3.array.front == 0 && unique3.array.back == vT3.universe)
+    if(unique3.front == 0 && unique3.back == vT3.universe)
     {
-        assert(sl3.length == unique3.array.length);
+        assert(sl3.length == unique3.length);
     }
-    else if(unique3.array.front == 0 || unique3.array.back == vT3.universe)
+    else if(unique3.front == 0 || unique3.back == vT3.universe)
     {
-        assert(sl3.length == unique3.array.length + 1);
+        assert(sl3.length == unique3.length + 1);
     }
     else
     {
-        assert(sl3.length == unique3.array.length + 2);
+        assert(sl3.length == unique3.length + 2);
     }
     assert(sl3.length); 
     assert(!sl3.empty); 
@@ -2623,8 +2635,6 @@ unittest
     unique3.each!(u => vT3.remove(u));
     assert(vT3.empty); 
     
-
-    //writeln(vT3[].array); 
     //* Works. Duration in debug mode: about 35 seconds. 
     //auto vTT = vebRoot((size_t(1) << 27) - 1); 
     //assert(vTT.insert(42)); 
@@ -2704,7 +2714,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         return frontKey; 
     }
 
-    auto popFront()
+    void popFront()
     in
     {
         assert(!empty); 
@@ -2736,7 +2746,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         return backKey; 
     }
 
-    auto popBack()
+    void popBack()
     in
     {
         assert(length); 
@@ -2836,7 +2846,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         return copy; 
     }
 
-    size_t toHash()
+    size_t toHash() const
     {
         assert(0);
     }
@@ -2880,7 +2890,8 @@ size_t get(size_t input) @nogc
 {
     return input; 
 }
-bool isNull(size_t input) @nogc
+
+bool isNull(size_t) @nogc
 {
     return false; 
 }
