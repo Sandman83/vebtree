@@ -1227,7 +1227,7 @@ struct VEBroot(T = void)
     insert method. this method is called from class with a universe size given. It performs recursion calls untill
     the universe size is reduced to the base size. Then the overloaded insert method is called. 
     */
-    bool insert(T...)(size_t key, ref T value) 
+    bool insert(T...)(size_t key, ref T value) @nogc
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         debug
@@ -1278,8 +1278,19 @@ struct VEBroot(T = void)
 
         if(empty) // if the current node does not contain anything put the value inside. 
         {
-            front(key, value); // the setters of min handle the value appropriately and do not need the universe size
-            back(key, value); // being explicitely provided, as they can check the isLeaf property. 
+            static if(T.length)
+            {
+                // the setters of min handle the value appropriately and do not need the universe size
+                front(key, value); 
+                // being explicitely provided, as they can check the isLeaf property. 
+                back(key, value); 
+            }
+            else
+            {
+                front(key); 
+                back(key); 
+            }
+            
             assert(!empty); 
             res = true; 
             return res; 
@@ -2010,7 +2021,7 @@ struct VEBroot(T = void)
     /**
     setter for the min, setting either the lowest bit or the min part of the value. 
     */
-    @property void front(T...)(size_t key, ref T value) 
+    @property void front(T...)(size_t key, ref T value) @nogc
         if((is(T == void) && T.length == 0) || (!is(T == void) && T.length < 2))// @nogc nothrow 
     {
         if(isLeaf)
@@ -2726,7 +2737,18 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
         {
             if(front.isNull)
             {
-                frontKey = root.universe; 
+                if(frontKey <= root.universe)
+                {
+                    frontKey = root.universe; 
+                }
+                else if(frontKey <= root.capacity)
+                {
+                    frontKey = root.capacity; 
+                }
+                else
+                {
+                    assert(0, "key exceeds tree capacity");
+                }
             }
             else
             {
@@ -2760,6 +2782,10 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
             {
                 backKey = 0; 
             }
+            else
+            {
+                backKey = back.get; 
+            }
         }
         else
         {
@@ -2770,12 +2796,54 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
 
     auto predecessor(size_t key)
     {
-        return root.predecessor(key); 
+        auto pred = root.predecessor(key);
+        static if(inclusive)
+        {
+            if(pred.isNull)
+            {
+                return 0; 
+            }
+            else
+            {
+                return pred.get; 
+            }
+        }
+        else
+        {
+            return pred; 
+        }
     }
 
     auto successor(size_t key)
     {
-        return root.successor(key); 
+        auto succ = root.successor(key);
+        static if(inclusive)
+        {
+            if(succ.isNull)
+            {
+                if(key <= root.universe)
+                {
+                    return root.universe; 
+                }
+                else if(key <= root.capacity)
+                {
+                    return root.capacity; 
+                }
+                else
+                {
+                    assert(0, "key exceeds tree capacity");
+                }
+            }
+            else
+            {
+                return succ.get; 
+            }
+        }
+        else
+        {
+            return succ; 
+        }
+        
     }
     
     static if(!is(Source[0] == void))
