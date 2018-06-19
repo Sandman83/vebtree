@@ -2149,6 +2149,44 @@ unittest
 ///
 unittest
 {
+    auto p = vebRoot(100); 
+    assert(p.empty); 
+    p.insert(5); 
+    p.insert(100); 
+    assert(!p.empty); 
+    assert(p.successor(0) == 5); 
+    assert(p.successor(4) == 5); 
+    assert(p.successor(5) == 100); 
+    auto s = p[]; 
+    static assert(isBidirectionalRange!(typeof(s)));
+    assert(s.front == 0); 
+    assert(p.front == 5); 
+    s.popFront; 
+    assert(!s.empty); 
+    assert(s.front == 5); 
+    s.popFront; 
+    assert(s.front == 100); 
+    s.popFront; 
+    assert(s.empty); 
+
+    auto pp = vebRoot(100);
+    assert(pp.empty); 
+    pp.insert(5); 
+    assert(!pp.empty); 
+    assert(pp.successor(0) == 5); 
+    assert(pp.successor(4) == 5); 
+    assert(pp.successor(5).isNull);
+    assert(pp[].successor(5) == 100); 
+    auto ss = pp(); 
+    static assert(isBidirectionalRange!(typeof(ss)));
+    assert(ss.front == 5); 
+    ss.popFront; 
+    assert(ss.empty); 
+    assert(ss.front.isNull); 
+}
+///
+unittest
+{
     
     auto vT = vebRoot(1000); 
     assert(vT.capacity == 1024); 
