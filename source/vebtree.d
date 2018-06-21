@@ -1234,30 +1234,30 @@ struct VEBroot(T = void)
         {
             static if(T.length)
             {
-                bool insertingNewVal = this[key] is null ? true : false; 
-            }
-        }   
-        typeof(return) res; 
-        scope(exit)
-        {
-            length = length + res; 
-            debug
-            {
-                static if(T.length)
+                auto insertingNewVal = this[key];
+
+                scope(exit)
                 {
-                    //writeln("value[0]: ")
                     assert(this[key] !is null);
-                    if(insertingNewVal)
+
+                    if(insertingNewVal is null)
                     {
-                        assert(*this[key] == value[0]);
+                        assert(this[key] == &value[0]);
+                    }
+                    else
+                    {
+                        assert(this[key] == insertingNewVal); 
                     }
                 }
             }
         }
         
+        typeof(return) res; 
+        
         if(key > capacity)
         {
             res = false; 
+            length = length + res; 
             return res;     
         }
 
@@ -1273,6 +1273,7 @@ struct VEBroot(T = void)
                     dataArr[key] = &value[0]; 
                 }
             }
+            length = length + res; 
             return res; 
         }
 
@@ -1293,6 +1294,7 @@ struct VEBroot(T = void)
             
             assert(!empty); 
             res = true; 
+            length = length + res; 
             return res; 
         }
 
@@ -1318,6 +1320,7 @@ struct VEBroot(T = void)
             }
             
             res = true; 
+            length = length + res; 
             return res; 
         }
         /*
@@ -1392,7 +1395,7 @@ struct VEBroot(T = void)
         // in any case we pass the lowered value low(value, uS) to the child. 
         assert(cluster[nextTreeIndex].universe == lSR(universe.nextPow2));
         res = cluster[nextTreeIndex].insert(low(key), value); 
-        
+        length = length + res; 
         return res;
     }
 
@@ -1408,10 +1411,6 @@ struct VEBroot(T = void)
             T* value; 
         }
 
-        scope(exit)
-        {
-            length = length - res; 
-        }
         // if descended so far, do not use other functionality any more. 
         if(isLeaf)
         {
@@ -1424,6 +1423,8 @@ struct VEBroot(T = void)
                     dataArr[key] = null; 
                 }
             }
+
+            length = length - res; 
 
             static if(is(T == void))
             {
@@ -1477,7 +1478,7 @@ struct VEBroot(T = void)
             }
             
             res = true; 
-
+            length = length - res; 
             static if(is(T == void))
             {
                 return res; 
@@ -1495,7 +1496,7 @@ struct VEBroot(T = void)
             {
                 front = back; // store a single value in this node. 
                 res = true; 
-
+                length = length - res; 
                 static if(is(T == void))
                 {    
                     return res; 
@@ -1540,6 +1541,7 @@ struct VEBroot(T = void)
             }
             
             res = true; 
+            length = length - res; 
             static if(is(T == void))
             {
                 return res; 
@@ -1562,6 +1564,7 @@ struct VEBroot(T = void)
                 // store a single value in this node. 
                 back = front; 
                 res = true; 
+                length = length - res; 
                 static if(is(T == void))
                 {
                     return res; 
@@ -1605,6 +1608,7 @@ struct VEBroot(T = void)
             }
             
             res = true; 
+            length = length - res; 
             static if(is(T == void))
             {
                 return res; 
@@ -1640,11 +1644,13 @@ struct VEBroot(T = void)
 
         static if(is(T == void))
         {
+            length = length - res; 
             return res; 
         }
         else
         {
             res = prelength > cluster[treeOffset].length; 
+            length = length - res; 
             return value; 
         }        
     }
