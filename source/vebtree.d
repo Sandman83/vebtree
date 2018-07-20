@@ -47,8 +47,8 @@ to the fact, that the maximum of elements which can be stored is
 2^16 on a 32-bit architecture and 
 2^32 on a 64-bit architecture. 
 This was intentionally chosen for two reasons: 
-i) to keep the size of a single node also depending from the underlying architecture. 
-ii) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
+i$(RPAREN) to keep the size of a single node also depending from the underlying architecture. 
+ii$(RPAREN) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
 emulating bigger entities. 
 */
 
@@ -996,8 +996,8 @@ struct VEBroot(T = void)
     }
 
     /**
-        method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
-        mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
+    method returning either the lower part of the stored value (intermediate node) or the lowest bit set (bit vector
+    mode). If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
     @property Response front() @nogc nothrow
     {
@@ -1025,8 +1025,8 @@ struct VEBroot(T = void)
 
 
     /** 
-        method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
-        vector mode. If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
+    method returning either the higher part of the stored value (intermediate node) or the highest bit set (bit
+    vector mode). If the node does not contain any value (min > max or value == 0) Nullable.null is returned. 
     */
     @property Response back() // @nogc nothrow 
     {
@@ -1165,19 +1165,21 @@ struct VEBroot(T = void)
     method to check whether the current node holds a value
     */
     @property bool empty() @nogc nothrow
-    in
     {
-        assert(val !is null); 
-    }
-    do
-    {
-        if(isLeaf)
+        if(val is null)
         {
-            return *val == 0; 
+            return true; 
         }
         else
         {
-            return (*val & lowerMask) > ((*val & higherMask) >> (size_t.sizeof * CHAR_BIT/2)); 
+            if(isLeaf)
+            {
+                return *val == 0; 
+            }
+            else
+            {
+                return (*val & lowerMask) > ((*val & higherMask) >> (size_t.sizeof * CHAR_BIT/2)); 
+            }
         }
     }
 
@@ -2703,7 +2705,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, R : Root!Source, alias Root, 
     
     R root; 
     
-    auto  opBinaryRight(string op)(size_t key) if(op == "in")  // @nogc nothrow 
+    auto opBinaryRight(string op)(size_t key) if(op == "in")  // @nogc nothrow 
     {
         return key in root; 
     }
