@@ -153,7 +153,7 @@ summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
 size_t hSR(size_t value) @nogc nothrow 
 {
-    return size_t(1) << (bsr(value)/2 + ((bsr(value) & 1) || ((value != 0) && (value & (value - 1))))); 
+    return size_t(1) << (bsr(value)/2 + ((value.bsr & 1) || ((value != 0) && (value & (value - 1))))); 
 }
 ///
 unittest
@@ -219,11 +219,11 @@ unittest
     size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
 
-    assert(high(U, x) == x / lSR(U)); 
+    assert(high(U, x) == x / U.lSR); 
 }
 
 /*
-This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
+This is an index function defined as fmod(value, universe.lSR). It is needed to find the appropriate
 value inside a cluster. It is part of the ideal indexing function
 */
 private size_t low(size_t universe, size_t value) @nogc nothrow
@@ -245,12 +245,12 @@ unittest
     size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
 
-    assert(low(U, x) == (x & (lSR(U) - 1)));
+    assert(low(U, x) == (x & (U.lSR - 1)));
 }
 
 /*
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
-relation holds: x = index(high(x), low(x)). This is the ideal indexing function of the tree. 
+relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
 */
 private size_t index(size_t universe, size_t x, size_t y) @nogc nothrow
 {
@@ -267,7 +267,7 @@ unittest
     size_t U = nextPow2(M); 
     auto x = uniform(0U, U, rndGenInUse); 
     
-    assert(index(U, high(U, x), low(U, x)) == x); 
+    assert(index(U, U.high(x), U.low(x)) == x); 
 }
 
 /// convenience method for initializing a van emde boas tree root. This is the default method to get a tree. 
@@ -926,7 +926,7 @@ struct VEBroot
         }
         
         // in any case we pass the lowered value low(value, uS) to the child. 
-        assert(cluster[nextTreeIndex].universe == lSR(universe.nextPow2));
+        assert(cluster[nextTreeIndex].universe == universe.nextPow2.lSR);
         return length = length + cluster[nextTreeIndex].insert(low(key)); 
     }
 
@@ -970,13 +970,13 @@ struct VEBroot
             }
             auto min = cluster[treeOffset.get].front; // otherwise we get the minimum from the offset child
             
-            assert(cluster[treeOffset].universe == lSR(universe.nextPow2)); 
+            assert(cluster[treeOffset].universe == universe.nextPow2.lSR); 
 
             // remove it from the child 
             cluster[treeOffset.get].remove(min); 
             
             // if it happens to become null during the remove process, we also remove the offset entry from the summary 
-            assert(summary.universe == hSR(universe.nextPow2));
+            assert(summary.universe == universe.nextPow2.hSR);
             if(cluster[treeOffset.get].empty)
             {
                 summary.remove(treeOffset.get); 
@@ -1003,13 +1003,13 @@ struct VEBroot
 
             // otherwise we get maximum from the offset child 
             auto max = cluster[treeOffset.get].back; 
-            assert(cluster[treeOffset.get].universe == lSR(universe.nextPow2));
+            assert(cluster[treeOffset.get].universe == universe.nextPow2.lSR);
 
             // remove it from the child 
             cluster[treeOffset.get].remove(max); 
 
             // if it happens to become null during the remove process, we also remove the offset enty from the summary 
-            assert(summary.universe == hSR(universe.nextPow2));
+            assert(summary.universe == universe.nextPow2.hSR);
             if(cluster[treeOffset.get].empty) summary.remove(treeOffset.get); 
 
             // anyway, the new max of the current node become the restored value of the calculated offset. 
@@ -1021,12 +1021,12 @@ struct VEBroot
         // if no condition was met we have to descend deeper. We get the offset by reducing the value to high(value, uS)
         auto treeOffset = high(key); 
         // and remove low(value, uS) from the offset child. 
-        assert(cluster[treeOffset].universe == lSR(universe.nextPow2));
+        assert(cluster[treeOffset].universe == universe.nextPow2.lSR);
 
         typeof(return) res = length = length - cluster[treeOffset].remove(low(key)); 
         
         // if the cluster become null during the remove process we have to update the summary node. 
-        assert(summary.universe == hSR(universe.nextPow2));
+        assert(summary.universe == universe.nextPow2.hSR);
         
         if(cluster[treeOffset].empty)
         {
@@ -1054,7 +1054,7 @@ struct VEBroot
                 auto maskedVal = *val & ((size_t(1) << value) - 1); 
                 if(maskedVal != 0)
                 {
-                     return typeof(return)(bsr(maskedVal));
+                     return typeof(return)(maskedVal.bsr);
                 }
             }
             return typeof(return).init; 
@@ -1083,7 +1083,7 @@ struct VEBroot
         if(!minlow.isNull && low(value) > minlow) 
         {
             // calculate an offset to continue with by asking the child on predecessor of the lowered value. 
-            assert(cluster[childIndex].universe == lSR(universe.nextPow2));
+            assert(cluster[childIndex].universe == universe.nextPow2.lSR);
             auto offset = cluster[childIndex].predecessor(low(value)); 
             // the result is given by reconstruction of the answer. 
             return typeof(return)(index(childIndex, offset)); 
@@ -1091,7 +1091,7 @@ struct VEBroot
         else // otherwise we can not use the minimum of the child 
         {
             // ask the summary for the predecessor cluster. 
-            assert(summary.universe == hSR(universe.nextPow2)); 
+            assert(summary.universe == universe.nextPow2.hSR); 
             auto predcluster = summary.predecessor(childIndex);
             // if the predecessor cluster is null return the current min, as this is the last remaining value 
             if(predcluster.isNull)
@@ -1120,7 +1120,7 @@ struct VEBroot
                 auto maskedVal = *val & ~((size_t(1) << (value + 1)) - 1); 
                 if(maskedVal != 0) 
                 {
-                    return typeof(return)(bsf(maskedVal));
+                    return typeof(return)(maskedVal.bsf);
                 }
             }
             return typeof(return).init; 
@@ -1141,7 +1141,7 @@ struct VEBroot
         if(!maxlow.isNull && low(value) < maxlow)
         {
             // calculate an offset to continue with by asking the child on predecessor of the lowered value
-            assert(cluster[childIndex].universe == lSR(universe.nextPow2));
+            assert(cluster[childIndex].universe == universe.nextPow2.lSR);
             auto offset = cluster[childIndex].successor(low(value)); 
             // the result is given by reconstruction of the answer
             return typeof(return)(index(childIndex, offset));
@@ -1149,7 +1149,7 @@ struct VEBroot
         else // otherwise we can not use the maximum of the child 
         {
             // ask the summary for the successor cluster. 
-            assert(summary.universe == hSR(universe.nextPow2)); 
+            assert(summary.universe == universe.nextPow2.hSR); 
             auto succcluster = summary.successor(childIndex); 
             // if the successor cluster is null
             if(succcluster.isNull)
@@ -1320,16 +1320,16 @@ struct VEBroot
 
             // add the summary with its universe of higher squaure root of the current universe
             assert(stats !is null); 
-            summary = typeof(this)(hSR(universe.nextPow2)); 
+            summary = typeof(this)(universe.nextPow2.hSR); 
             assert(stats !is null); 
             assert(ptrArr[0].stats !is null); 
-            assert(ptrArr[0].universe == hSR(universe.nextPow2));
+            assert(ptrArr[0].universe == universe.nextPow2.hSR);
             // add higher square root children with lower square root universe each.
             assert(stats !is null); 
 
-            cluster.each!((ref el) => el = typeof(this)(lSR(universe.nextPow2)));
+            cluster.each!((ref el) => el = typeof(this)(universe.nextPow2.lSR));
             assert(stats !is null); 
-            ptrArr[1 .. hSR(universe.nextPow2) + 1].each!((ref el) => assert(el.universe == lSR(universe.nextPow2)));
+            ptrArr[1 .. hSR(universe.nextPow2) + 1].each!((ref el) => assert(el.universe == universe.nextPow2.lSR));
             
         }
         nullify; // set the value to the sentinel value to represent the empty state. 
@@ -1610,7 +1610,7 @@ unittest
 
     size_t M = uniform(2U,testedSize, rndGenInUse); //set universe size to some integer. 
     auto vT = vebRoot(M); //create the tree
-    assert(vT.capacity == nextPow2(M-1)); 
+    assert(vT.capacity == (M-1).nextPow2); 
 
     auto filled = M.iota.map!(i => vT.insert(uniform(0, vT.universe, rndGenInUse))).sum; 
     assert(filled == vT.length); 
