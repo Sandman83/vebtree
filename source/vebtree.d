@@ -934,7 +934,7 @@ struct VEBroot
     remove method. this method is called from class with a universe size given. It performs recursion calls untill
     the universe size is reduced to the base size. Then the overloaded remove method is called. 
     */
-    auto remove(size_t key) // @nogc nothrow 
+    auto remove(size_t key) @nogc // nothrow 
     {
         // if descended so far, do not use other functionality any more. 
         if(isLeaf)
@@ -1347,7 +1347,7 @@ struct VEBroot
     }
 
     /** method executing the appropriate steps to nullify the current node */
-    @property void nullify() // @nogc nothrow 
+    @property void nullify() @nogc // nothrow 
     in
     {
         assert(val !is null); 
