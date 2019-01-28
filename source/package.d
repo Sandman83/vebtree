@@ -59,14 +59,258 @@ emulating bigger entities.
 module vebtree; 
 public import vebtree.root; 
 import std.typecons : Flag, Yes, No; 
+import std.experimental.logger; 
+
+/**
+As a usual container, van Emde Boas tree provides the notion of capacity
+*/
+size_t capacity(T)(ref T root) @nogc
+{
+    //mixin(condImplCall!(__FUNCTION__, ""));
+    if(root.isLeaf) return root.capacityImpl; 
+    return (root.universe-1).nextPow2;    
+}
+///
+static foreach(_; 1 .. size_t.sizeof - 1)
+{
+    unittest
+    {
+        foreach(b; defaultBaseSize.iota)
+        {
+            import std.random : unpredictableSeed; 
+            auto currentSeed = unpredictableSeed();
+            
+            size_t M; 
+            auto vT = generateVEBtree!("UT: black box test capacity: ", 1 << _)
+                (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
+            import std.conv : to; 
+            assert(vT.capacity == (M - 1).nextPow2,
+                to!string("vT.capacity: " ~ to!string(vT.capacity) ~ " M: " ~ to!string(M)));
+        }
+    }
+}
+
+
+/**
+The universe used for initializing is stored within the van Emde Boas tree. 
+*/
+size_t universe(T)(ref T root) @nogc
+{
+    return root.universe_; 
+}
+///
+static foreach(_; 1 .. size_t.sizeof - 1)
+{
+    unittest
+    {
+        foreach(b; defaultBaseSize.iota)
+        {
+            import std.random : unpredictableSeed; 
+            auto currentSeed = unpredictableSeed();
+            size_t M; 
+            auto vT = generateVEBtree!("UT: black box test universe: ", 1 << _)
+                    (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
+            assert(vT.universe == M); 
+            log("vT.universe: ", vT.universe, " (vT.universe_-1).nextPow2.hSR + 1: ", (vT.universe_-1).nextPow2.hSR + 1);
+        }
+    }
+}
+
+
+/**
+The predecessor search method of the van Emde Boas tree. 
+*/
+size_t prev(T)(ref T root, size_t val) @nogc
+{
+    if(root.empty) { return NIL; }
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.prevImpl(val); 
+    // if given value is greater then the stored max, the predecessor is max
+    if(val > root.max)
+    {
+        return root.max; 
+    }
+    // if given value is less then the min, no predecessor exists. 
+    if(val <= root.min)
+    {
+        return NIL;
+    }
+    /*
+    if none of the break conditions was met we have to descend further into the tree. 
+    */
+    auto childIndex = root.high(val); // calculate the child index by high(value, uS)
+    const minlow = root.cluster[childIndex].min; // look into the child for its minimum
+    // if the minimum exists and the lowered given value is greater then the child's minimum
+    if((minlow != NIL) && (root.low(val) > minlow))
+    {
+        auto offset = root.cluster[childIndex].prev(root.low(val)); 
+        // the result is given by reconstruction of the answer. 
+        return root.index(childIndex, offset); 
+    }
+    else // otherwise we can not use the minimum of the child 
+    {
+        auto predcluster = root.summary.prev(childIndex);
+        // if the predecessor cluster is null return the current min, as this is the last remaining value 
+        if(predcluster == NIL)
+        {
+            return root.min; 
+        }
+        // if the predecessor cluster exists, the offset is given by its maximum
+        // and the result by the reconstruction of the offset. 
+        return root.index(predcluster, root.cluster[predcluster].max); 
+    }
+}
+
+/**
+The successor search method of the van Emde Boas tree. 
+*/
+size_t next(T)(const ref T root, size_t val) @nogc
+{
+    if(root.empty) { return NIL; }
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.nextImpl(val); 
+    // if given value is less then the min, return the min as successor
+    if(val < root.min) return root.min; 
+    // if given value is greater then the max, no predecessor exists
+    if(val >= root.max) return NIL; 
+    // if none of the break conditions was met, we have to descent further into the tree. 
+    // calculate the child index by high(value, uS)
+    const childIndex = root.high(val); 
+    // look into the child for its maximum
+    const maxlow = root.cluster[childIndex].max; 
+    // if the maximum exists and the lowered given value is less then the child's maximum 
+    if((maxlow != NIL) && (root.low(val) < maxlow))
+    {
+        auto offset = root.cluster[childIndex].next(root.low(val)); 
+        // the result is given by reconstruction of the answer
+        return root.index(childIndex, offset);
+    }
+    else // otherwise we can not use the maximum of the child 
+    {
+        auto succcluster = root.summary.next(childIndex); 
+        // if the successor cluster is null
+        if(succcluster == NIL)
+        {
+            // return the current max, as this is the last remaining value
+            return root.max; //? return nil?
+        }
+        assert(succcluster != NIL);
+        assert(root.cluster[succcluster].min != NIL);
+        // if the successor cluster exists, the offset is given by its minimum
+        // and the result by the reconstruction of the offset. 
+        return root.index(succcluster, root.cluster[succcluster].min); 
+    }
+}
+
+/**
+The maximal contained key in the van Emde Boas tree
+*/
+size_t max(T)(const ref T root) @nogc
+{
+    if(root.empty) { return NIL; }
+    //mixin(condImplCall!(__FUNCTION__, ""));
+    if(root.isLeaf) return root.maxImpl; 
+    return (root.value_ & higherMask) >> (defaultBaseSize/2);
+}
+/**
+The minimal contained key in the van Emde Boas tree
+*/
+size_t min(T)(const ref T root) @nogc
+{
+    if(root.empty) { return NIL; } 
+    //mixin(condImplCall!(__FUNCTION__, ""));
+    if(root.isLeaf) return root.minImpl; 
+    return root.value_ & lowerMask; 
+}
+/**
+The insertion method of the van Emde Boas tree. 
+*/
+bool insert(T)(ref T root, size_t val)
+{
+    debug
+    {
+    }
+    
+    if(val >= root.capacity)
+    {
+        return false;
+    }
+
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.insertImpl(val); 
+
+    if(root.empty) // if the current node does not contain anything put the value inside. 
+    {
+        min(root, val);
+        max(root, val); 
+        
+        return root.length = root.length + 1; 
+    }
+
+    assert(!root.empty);
+    assert(root.min != NIL); 
+    assert(root.max != NIL); 
+
+    if(val == root.min || val == root.max)
+    {
+        return false; 
+    }
+
+    if(root.min == root.max) // if the node contains a single value only, expand the node to a range and leave. 
+    {
+        if(root.min > val)
+        {
+            root.min = val; 
+        }
+        if(root.max < val)
+        {
+            root.max = val; 
+        }
+        
+        return root.length = root.length + 1; 
+    }
+    /*
+        if none of the cases above was true (all of them are break conditions) we have to compare the given value
+        with the values present and adapt the range limits. This replaces the value we want to insert. 
+    */
+    // a swap can not be used here, as min is itself a (property) method 
+    if(val < root.min)
+    {
+        const tmpKey = val; 
+
+        val = root.min;
+
+        root.min = tmpKey;
+        
+    }
+    // a swap can not be used here, as max is itself a (property) method 
+    if(val > root.max)
+    {
+        const tmpKey = val; 
+        
+        val = root.max; 
+        
+        root.max = tmpKey; 
+    }
+    
+    // calculate the index of the children cluster by high(value, uS) we want to descent to. 
+    auto nextTreeIndex = root.high(val); 
+    
+    if(root.cluster[nextTreeIndex].empty)
+    {
+        root.summary.insert(root.high(val));
+    }
+    return root.length = root.length + root.cluster[nextTreeIndex].insert(root.low(val)); 
+}
 
 /**
 remove method of the van Emde Boas tree
 */
-bool remove(ref VEBroot root, size_t val)
+bool remove(T)(ref T root, size_t val)
 {
     if(root.empty) return false; 
-    mixin(condImplCall!(__FUNCTION__));
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.removeImpl(val); 
     if(root.min == root.max) // if the current node contains only a single value
         {
             assert(root.length == 1);
@@ -151,231 +395,6 @@ bool remove(ref VEBroot root, size_t val)
         }
 
         return res;
-}
-
-/**
-As a usual container, van Emde Boas tree provides the notion of capacity
-*/
-auto capacity(ref VEBroot root)
-{
-    mixin(condImplCall!(__FUNCTION__, ""));
-    return root.universe.nextPow2;    
-}
-
-/**
-The universe used for initializing is stored within the van Emde Boas tree. 
-*/
-auto universe(ref VEBroot root) @nogc
-{
-    return root.universe_; 
-}
-
-/**
-The predecessor search method of the van Emde Boas tree. 
-*/
-auto prev(ref VEBroot root, size_t val)
-{
-    if(root.empty) { return NIL; }
-    mixin(condImplCall!(__FUNCTION__));
-    // if given value is greater then the stored max, the predecessor is max
-    if(val > root.max)
-    {
-        return root.max; 
-    }
-    // if given value is less then the min, no predecessor exists. 
-    if(val <= root.min)
-    {
-        return NIL;
-    }
-    /*
-    if none of the break conditions was met we have to descend further into the tree. 
-    */
-    auto childIndex = root.high(val); // calculate the child index by high(value, uS)
-    const minlow = root.cluster[childIndex].min; // look into the child for its minimum
-    // if the minimum exists and the lowered given value is greater then the child's minimum
-    if((minlow != NIL) && (root.low(val) > minlow))
-    {
-        auto offset = root.cluster[childIndex].prev(root.low(val)); 
-        // the result is given by reconstruction of the answer. 
-        return root.index(childIndex, offset); 
-    }
-    else // otherwise we can not use the minimum of the child 
-    {
-        auto predcluster = root.summary.prev(childIndex);
-        // if the predecessor cluster is null return the current min, as this is the last remaining value 
-        if(predcluster == NIL)
-        {
-            return root.min; 
-        }
-        // if the predecessor cluster exists, the offset is given by its maximum
-        // and the result by the reconstruction of the offset. 
-        return root.index(predcluster, root.cluster[predcluster].max); 
-    }
-}
-
-/**
-The successor search method of the van Emde Boas tree. 
-*/
-auto next(const ref VEBroot root, size_t val)
-{
-    if(root.empty) { return NIL; }
-    mixin(condImplCall!(__FUNCTION__));
-    // if given value is less then the min, return the min as successor
-    if(val < root.min) return root.min; 
-    // if given value is greater then the max, no predecessor exists
-    if(val >= root.max) return NIL; 
-    // if none of the break conditions was met, we have to descent further into the tree. 
-    // calculate the child index by high(value, uS)
-    const childIndex = root.high(val); 
-    // look into the child for its maximum
-    const maxlow = root.cluster[childIndex].max; 
-    // if the maximum exists and the lowered given value is less then the child's maximum 
-    if((maxlow != NIL) && (root.low(val) < maxlow))
-    {
-        auto offset = root.cluster[childIndex].next(root.low(val)); 
-        // the result is given by reconstruction of the answer
-        return root.index(childIndex, offset);
-    }
-    else // otherwise we can not use the maximum of the child 
-    {
-        auto succcluster = root.summary.next(childIndex); 
-        // if the successor cluster is null
-        if(succcluster == NIL)
-        {
-            // return the current max, as this is the last remaining value
-            return root.max; //? return nil?
-        }
-        assert(succcluster != NIL);
-        assert(root.cluster[succcluster].min != NIL);
-        // if the successor cluster exists, the offset is given by its minimum
-        // and the result by the reconstruction of the offset. 
-        return root.index(succcluster, root.cluster[succcluster].min); 
-    }
-}
-
-private bool min(ref VEBroot root, size_t val)
-in
-{
-    assert(val < maxSizeBound);
-}
-do
-{
-    if(root.min <= val){ return false; }
-    mixin(condImplCall!(__FUNCTION__));
-    root.value_ = root.value_ & higherMask;
-    root.value_ = root.value_ | val;
-    return true; 
-}
-private bool max(ref VEBroot root, size_t val)
-in
-{
-    assert(val < maxSizeBound);
-}
-do
-{
-    if(root.max >= val) { return false; }
-    mixin(condImplCall!(__FUNCTION__));
-    root.value_ = root.value_ & lowerMask; 
-    root.value_ = root.value_ | (val << (baseSize/2));
-    return true;
-}
-
-/**
-The maximal contained key in the van Emde Boas tree
-*/
-auto max(const ref VEBroot root) @nogc
-{
-    if(root.empty) { return NIL; }
-    mixin(condImplCall!(__FUNCTION__, ""));
-    return (root.value_ & higherMask) >> (baseSize/2);
-}
-/**
-The minimal contained key in the van Emde Boas tree
-*/
-size_t min(const ref VEBroot root) @nogc
-{
-    if(root.empty) { return NIL; } 
-    mixin(condImplCall!(__FUNCTION__, ""));
-    return root.value_ & lowerMask; 
-}
-/**
-The insertion method of the van Emde Boas tree. 
-*/
-auto insert(ref VEBroot root, size_t val)
-{
-    debug
-    {
-    }
-    
-    if(val >= root.capacity)
-    {
-        return false;
-    }
-
-    mixin(condImplCall!(__FUNCTION__));
-
-    if(root.empty) // if the current node does not contain anything put the value inside. 
-    {
-        root.min = val; 
-        root.max = val;
-        
-        return root.length = root.length + 1; 
-    }
-
-    assert(!root.empty);
-    assert(root.min != NIL); 
-    assert(root.max != NIL); 
-
-    if(val == root.min || val == root.max)
-    {
-        return false; 
-    }
-
-    if(root.min == root.max) // if the node contains a single value only, expand the node to a range and leave. 
-    {
-        if(root.min > val)
-        {
-            root.min = val; 
-        }
-        if(root.max < val)
-        {
-            root.max = val; 
-        }
-        
-        return root.length = root.length + 1; 
-    }
-    /*
-        if none of the cases above was true (all of them are break conditions) we have to compare the given value
-        with the values present and adapt the range limits. This replaces the value we want to insert. 
-    */
-    // a swap can not be used here, as min is itself a (property) method 
-    if(val < root.min)
-    {
-        const tmpKey = val; 
-
-        val = root.min;
-
-        root.min = tmpKey;
-        
-    }
-    // a swap can not be used here, as max is itself a (property) method 
-    if(val > root.max)
-    {
-        const tmpKey = val; 
-        
-        val = root.max; 
-        
-        root.max = tmpKey; 
-    }
-    
-    // calculate the index of the children cluster by high(value, uS) we want to descent to. 
-    auto nextTreeIndex = root.high(val); 
-    
-    if(root.cluster[nextTreeIndex].empty)
-    {
-        root.summary.insert(root.high(val));
-    }
-    return root.length = root.length + root.cluster[nextTreeIndex].insert(root.low(val)); 
 }
 
 ///
@@ -528,18 +547,40 @@ static foreach(_; 0 .. baseSize * testMultiplier)
 +/
 
 private: 
+bool min(T)(ref T root, size_t val)
+{
+    if(root.min <= val){ return false; }
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.minImpl(val); 
+    root.value_ = root.value_ & higherMask;
+    root.value_ = root.value_ | val;
+    return true; 
+}
+
+bool max(T)(ref T root, size_t val)
+{
+    if(root.max >= val) { return false; }
+    //mixin(condImplCall!(__FUNCTION__));
+    if(root.isLeaf) return root.maxImpl(val); 
+    root.value_ = root.value_ & lowerMask; 
+    root.value_ = root.value_ | (val << (defaultBaseSize/2));
+    return true;
+}
 /**
 insert method. this method is called from class with a universe size given. It performs recursion calls untill
 the universe size is reduced to the base size. Then the overloaded insert method is called. 
 */
-bool nullify(ref VEBroot root) @nogc
+bool nullify(T)(ref T root) @nogc
 {
     root.filled_ = false; 
-    mixin(condImplCall!(__FUNCTION__, ""));
+    //mixin(condImplCall!(__FUNCTION__, ""));
+    if(root.isLeaf) return root.nullifyImpl; 
     return true; 
 }
+/*
 template condImplCall(string FunName, string Arg = "val") //pragma(msg, ImplCall!(__FUNCTION__));
 {
     import std.array : split, join; 
     enum condImplCall = "if(root.isLeaf) return root." ~ FunName.split(".")[1..$].join(".") ~ "Impl(" ~ Arg ~ ");";
 }
+*/

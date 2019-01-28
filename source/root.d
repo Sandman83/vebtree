@@ -3,7 +3,7 @@ import vebtree;
 import std.bitmanip : taggedPointer; 
 import core.bitop;
 import std.traits;
-import std.range; 
+public import std.range; 
 public import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
 import std.algorithm.iteration : each, map, uniq, sum, filter;
@@ -20,6 +20,7 @@ version(unittest)
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
     import std.math : sqrt; 
+    public import std.parallelism : parallel; 
 
     // helping function for output a given value in binary representation
     void bin(size_t n)
@@ -30,29 +31,38 @@ version(unittest)
         logf("%d", n % 2);
     }
 
+    enum bitness = CHAR_BIT * size_t.sizeof; 
     /// precalculated powers of two table for unit testing
-    enum powersOfTwo = baseSize.iota.map!(a => size_t(1) << a); 
-
+    enum powersOfTwo = (bitness).iota.map!(a => size_t(1) << a); 
+    enum defaultBaseSize = CHAR_BIT * size_t.sizeof; 
     enum testMultiplier = 1; //16
     ///
 
+    /*
     static assert(!isInputRange!(VEBroot)); 
     static assert(isIterable!(VEBroot));
     static assert(isBidirectionalRange!(typeof(VEBroot[])));
     static assert(!is(typeof(vebRoot(4)[2])));
+    */
+
+    auto generateVEBtree(string identifier1, size_t baseSize)
+        (size_t identifier2, uint currentSeed, size_t min, size_t max, ref size_t M)
+    {
+        static assert(baseSize > 1); 
+        static assert((baseSize & (baseSize - 1)) == 0); 
+        assert(max > min); 
+        rndGen.seed(currentSeed); //initialize the random generator
+        M = uniform(min, max); // parameter for construction
+        trace(identifier1,": ", identifier2, " baseSize: ", baseSize, "; seed: ", currentSeed, " M: ", M); 
+        return vebRoot!baseSize(M);
+    }
 }
 
 /**
 the baseSize defines the cutoff limit, where the node goes into the bit array mode. It is parametrized on the size
 of size_t and changes dynamically with the architecture used. 
 */
-enum baseSize = CHAR_BIT * size_t.sizeof; 
-
-/**
-the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
-changes dynamically with the architecture used. 
-*/
-enum maxSizeBound = size_t(1) << baseSize/2; // == uint.max + 1 on a 64-bit system
+//enum baseSize = CHAR_BIT * size_t.sizeof; 
 
 /// calculating the type, based on native type of the underlying system
 static if(size_t.sizeof == 16) // future
@@ -122,13 +132,15 @@ unittest
     trace("UT: lSR               ", "seed: ", currentSeed);
     rndGen.seed(currentSeed); //initialize the random generator
     size_t M = uniform(1UL,halfSizeT.max); //set universe size to some integer. 
-    auto lSR = lSR(M); 
+    auto lSR = M.lSR; 
     
     assert((lSR & (lSR - 1)) == 0); 
     assert(lSR * lSR < M);
     auto check = powersOfTwo.find(lSR); 
-    
-    if(lSR < halfSizeT.max) assert((check.drop(1).front) > sqrt(to!float(M))); 
+    if(lSR < halfSizeT.max) 
+    {
+        assert((check.drop(1).front) > sqrt(to!float(M))); 
+    }
 }
 
 /*
@@ -259,137 +271,136 @@ private auto vebTree(Flag!"inclusive" inclusive, alias root)()
 
     return retVal;
 }
-
-static foreach(_; 0 .. baseSize * testMultiplier)
+static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        auto currentSeed = unpredictableSeed();
-        trace("UT: white box test #1: ", _, "; seed: ", currentSeed); 
-
-        rndGen.seed(currentSeed); //initialize the random generator
-        size_t M = uniform(2UL, baseSize); // parameter for construction
-        auto vT = VEBroot(M);
-
-        assert(vT.value_ == 0);
-        assert(vT.ptr is null);
-        assert(vT.empty == true);
-        assert(vT.min == NIL); 
-        assert(vT.max == NIL); 
-        assert(vT[].front == 0); 
-        assert(vT[].back == vT.universe); 
-        assert(vT().front == NIL);
-        assert(vT().back == NIL); 
-        assert(vT.length == 0);
-        assert(vT.universe == M);
-        assert(vT.capacity == baseSize);
-
-        size_t N = uniform(0UL, baseSize); // independent parameter for testing
-        auto testArray = (2 * M).iota.randomCover.array; 
-        auto cacheArray = new size_t[N];
-        
-        size_t counter; 
-
-        foreach(testNumber; testArray)
+        enum baseSize = 1 << _; 
+        foreach(b; bitness.iota)
         {
+            auto currentSeed = unpredictableSeed();
+            size_t M; 
+            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 1, baseSize, M);
+
+            assert(vT.value_ == 0);
+            assert(vT.ptr is null);
+            assert(vT.empty == true);
+            assert(vT.min == NIL); 
+            assert(vT.max == NIL); 
+            assert(vT[].front == 0); 
+            assert(vT[].back == vT.universe); 
+            assert(vT().front == NIL);
+            assert(vT().back == NIL); 
+            assert(vT.length == 0);
             assert(vT.universe == M);
-            if(counter == N) break; 
-
-            const insertResult = vT.insert(testNumber);
+            assert(vT.capacity == baseSize);
+            size_t N = uniform(0UL, baseSize); // independent parameter for testing
+            auto testArray = (2 * M).iota.randomCover.array; 
+            auto cacheArray = new size_t[N];
             
-            if(insertResult)
-            {
-                assert(!vT.empty);
-                cacheArray[counter] = testNumber;
-                ++counter;
-            }
-        }
-        
-        //const originalCacheArray = cacheArray.dup; 
-        cacheArray.sort;
-        
-        assert(vT.ptr is null);
-        assert(vT.empty == !N);
-        foreach(el; cacheArray)
-        {
-            assert(bt(&vT.value_, el));
-        }
-        assert(vT.length == cacheArray.uniq.count);
-        assert(vT.universe == M);
-        if(cacheArray.length)
-        {
-            assert(vT.min == cacheArray.front); 
-            assert(vT.max == cacheArray.back); 
-        }
-        else
-        {
-            assert(vT.min == NIL);
-            assert(vT.max == NIL);
-        }
-        
-        auto currElement = vT.min; 
-        foreach(el; cacheArray.uniq)
-        {
-            assert(currElement == el); 
-            currElement = vT.next(currElement); 
-        }
-        currElement = vT.max;
-        foreach(el; cacheArray.uniq.array.retro)
-        {
-            assert(currElement == el); 
-            currElement = vT.prev(currElement); 
-        }
+            size_t counter; 
 
-        foreach(key; 0 .. vT.universe)
-        {
-            if(cacheArray.uniq.array.canFind(key))
+            foreach(testNumber; testArray)
             {
-                assert(key in vT); 
+                assert(vT.universe == M);
+                if(counter == N) break; 
+
+                const insertResult = vT.insert(testNumber);
+                
+                if(insertResult)
+                {
+                    assert(!vT.empty);
+                    cacheArray[counter] = testNumber;
+                    ++counter;
+                }
+            }
+            
+            //const originalCacheArray = cacheArray.dup; 
+            cacheArray.sort;
+            
+            assert(vT.ptr is null);
+            assert(vT.empty == !N);
+            foreach(el; cacheArray)
+            {
+                assert(bt(&vT.value_, el));
+            }
+            assert(vT.length == cacheArray.uniq.count);
+            assert(vT.universe == M);
+            if(cacheArray.length)
+            {
+                assert(vT.min == cacheArray.front); 
+                assert(vT.max == cacheArray.back); 
             }
             else
             {
-                assert(!(key in vT));
+                assert(vT.min == NIL);
+                assert(vT.max == NIL);
             }
-        }
-        auto deepCopy = vT.dup; 
-
-        assert(deepCopy.value_ == vT.value_);
-        assert(vT == cacheArray.uniq);
-        assert(vT.prev(vT.min) == NIL);
-        assert(vT.next(vT.max) == NIL);
-        assert(vT == deepCopy);
-        assert(vT == deepCopy());
-        
-        if(cacheArray.length)
-        {
-            auto valToRemove = cacheArray.uniq.array.randomCover.front; 
-            vT.removeImpl(valToRemove);
-            assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << valToRemove)); 
-            cacheArray
-                .count(valToRemove)
-                .iota
-                .each!(i => cacheArray = 
-                            cacheArray
-                                .remove(cacheArray.length - cacheArray.find(valToRemove).length));
-        }
-        else
-        {
-            assert((deepCopy.value_ ^ vT.value_) == 0); 
-        }
-        
-        foreach(key; 0 .. vT.capacity)
-        {
-            if(cacheArray.uniq.array.canFind(key))
+            
+            auto currElement = vT.min; 
+            foreach(el; cacheArray.uniq)
             {
-                assert(vT.removeImpl(key)); 
+                assert(currElement == el); 
+                currElement = vT.next(currElement); 
+            }
+            currElement = vT.max;
+            foreach(el; cacheArray.uniq.array.retro)
+            {
+                assert(currElement == el); 
+                currElement = vT.prev(currElement); 
+            }
+
+            foreach(key; 0 .. vT.universe)
+            {
+                if(cacheArray.uniq.array.canFind(key))
+                {
+                    assert(key in vT); 
+                }
+                else
+                {
+                    assert(!(key in vT));
+                }
+            }
+            auto deepCopy = vT.dup; 
+
+            assert(deepCopy.value_ == vT.value_);
+            assert(vT == cacheArray.uniq);
+            assert(vT.prev(vT.min) == NIL);
+            assert(vT.next(vT.max) == NIL);
+            assert(vT == deepCopy);
+            assert(vT == deepCopy());
+            
+            if(cacheArray.length)
+            {
+                auto valToRemove = cacheArray.uniq.array.randomCover.front; 
+                vT.removeImpl(valToRemove);
+                assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << valToRemove)); 
+                cacheArray
+                    .count(valToRemove)
+                    .iota
+                    .each!(i => cacheArray = 
+                                cacheArray
+                                    .remove(cacheArray.length - cacheArray.find(valToRemove).length));
             }
             else
             {
-                assert(!(vT.removeImpl(key)));
+                assert((deepCopy.value_ ^ vT.value_) == 0); 
             }
-        }
-        assert(vT.value_ == 0); 
-        assert(vT.empty);
+            
+            foreach(key; 0 .. vT.capacity)
+            {
+                if(cacheArray.uniq.array.canFind(key))
+                {
+                    assert(vT.removeImpl(key)); 
+                }
+                else
+                {
+                    assert(!(vT.removeImpl(key)));
+                }
+            }
+            assert(vT.value_ == 0); 
+            assert(vT.empty);
+        }   
     }
 }
 
@@ -398,7 +409,6 @@ define the absence of a key to be -1.
 */
 enum NIL = ptrdiff_t(-1); 
 
-//static assert(VEBroot.sizeof == halfSizeT.sizeof * size_t.sizeof); 
 /**
 This is the struct to represent a VEB tree node. Its members are
 - a pointer to the stats: universe and current inserted element amount 
@@ -416,8 +426,18 @@ The first element of the children array, if present is handled different. Accord
 of the summary of the remaining children cluster. With it help it is possible to achieve a very small recursion
 level during an access. 
 */
-struct VEBroot
+auto vebRoot(size_t baseSize = defaultBaseSize)(size_t universe)
 {
+    return VEBroot!baseSize(universe); 
+}
+package struct VEBroot(size_t baseSize)
+{
+    /**
+    the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
+    changes dynamically with the architecture used. 
+    */
+    enum maxSizeBound = size_t(1) << baseSize/2; // == uint.max + 1 on a 64-bit system
+
     size_t toHash() const nothrow
     {
         assert(0); 
@@ -588,17 +608,7 @@ struct VEBroot
     auto opCall()
     {
         return vebTree!(No.inclusive, this)();
-    }
-
-    /**
-    remove method. this method is called from class with a universe size given. It performs recursion calls untill
-    the universe size is reduced to the base size. Then the overloaded remove method is called. 
-    */
-    bool removeImpl(size_t key) @nogc
-    {
-        return length = length - (btr(&value_, key) != 0); 
-    }
-    
+    }    
 
     /**
     Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
@@ -616,48 +626,88 @@ struct VEBroot
     outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
     */
     this(size_t val) // nothrow 
+    in
+    {
+        assert(val); 
+    }
+    do
     {
         universe_ = val;
         debug
         {
-        }
-        assert(!length_ == this.empty);
-        if(!isLeaf)
-        {
-            const arrSize = universe_.nextPow2.hSR + 1; 
-            debug
-            {
-            }
-
-            debug
-            {
-                assert(ptr_ is null);    
-            }
-            
-            // reserve enough place for the summary and the children cluster
-            ptr_ = (new VEBroot[arrSize]).ptr;
-            
-            debug
-            {
-                assert(!(ptr_ is null));
-                foreach(i; 0 .. arrSize)
-                {
-                    assert(arr[i].universe == 0);
-                }
-            }
-            
-            // add the summary with its universe of higher squaure root of the current universe
-            summary = VEBroot(universe_.nextPow2.hSR); 
-            
-            // add higher square root children with lower square root universe each.
-            foreach(i, ref el; cluster)
-            {
-                el = VEBroot(universe_.nextPow2.lSR); 
-            }
+            //log(1);
         }
         assert(!length_ == this.empty);
         debug
         {
+            //log(2);
+        }
+        if(!isLeaf)
+        {
+            debug
+            {
+                //log(3);
+            }
+            
+            const arrSize = (universe_ - 1).nextPow2.hSR + 1; 
+
+            debug
+            {
+                //log(4);
+            }
+
+            debug
+            {
+                assert(ptr_ is null);
+                //log(5); 
+            }
+            
+            // reserve enough place for the summary and the children cluster
+            ptr_ = (new typeof(this)[arrSize]).ptr;
+            
+            debug
+            {
+                //log(6); 
+                assert(!(ptr_ is null));
+                //log(7); 
+                foreach(i; 0 .. arrSize)
+                {
+                    //log(8); 
+                    assert(arr[i].universe == 0);
+                    //log(9); 
+                }
+                //log(10); 
+            }
+            
+            // add the summary with its universe of higher squaure root of the current universe
+            summary = typeof(this)((universe_ - 1).nextPow2.hSR); 
+            
+            debug
+            {
+                //log(11); 
+            }
+            // add higher square root children with lower square root universe each.
+            foreach(i, ref el; cluster)
+            {
+                debug
+                {
+                    //log(12); 
+                }
+                el = typeof(this)((universe_ - 1).nextPow2.lSR); 
+            }
+            debug
+            {
+                //log(13); 
+            }
+        }
+
+        assert(!length_ == this.empty);
+        debug
+        {
+            debug
+            {
+                //log(14); 
+            }
         }
     }
 
@@ -670,6 +720,14 @@ struct VEBroot
     }
 
     package:
+    /**
+    remove method. this method is called from class with a universe size given. It performs recursion calls untill
+    the universe size is reduced to the base size. Then the overloaded remove method is called. 
+    */
+    bool removeImpl(size_t key) @nogc
+    {
+        return length = length - (btr(&value_, key) != 0); 
+    }
     /**
     successor method. this method is called from class with a universe size given. It performs recursion calls until
     the universe size is reduced to the base size. Then the overloaded successor method is called. 
@@ -851,7 +909,7 @@ struct VEBroot
     }
     bool isLeaf() const @nogc 
     {
-        return universe_ < baseSize; 
+        return universe_ <= baseSize; 
     }
 
     size_t value_;
@@ -872,10 +930,10 @@ struct VEBroot
         }
     }
 
-    private: 
+    package: 
     auto arr() inout
     {
-        return ptr_[0 .. universe_.nextPow2.hSR + 1];
+        return ptr_[0 .. (universe_-1).nextPow2.hSR + 1];
     }
     
     auto ref ptr() 
@@ -905,7 +963,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
 
     size_t length; 
 
-    auto front() @nogc
+    typeof(frontKey) front() @nogc
     {        
         return frontKey; 
     }
@@ -924,8 +982,8 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
         frontKey = next(frontKey);
         --length; 
     }
-
-    auto back() @nogc
+    
+    typeof(backKey) back() @nogc
     {
         return backKey; 
     }
@@ -1026,7 +1084,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
             {
                 return false; 
             }
-            copy.popFront; 
+            popFront(copy); 
         }
         
         return true; 
