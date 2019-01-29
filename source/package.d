@@ -64,7 +64,7 @@ import std.experimental.logger;
 /**
 As a usual container, van Emde Boas tree provides the notion of capacity
 */
-size_t capacity(T)(ref T root) @nogc
+size_t capacity(T)(const ref T root) @nogc
 {
     //mixin(condImplCall!(__FUNCTION__, ""));
     if(root.isLeaf) return root.capacityImpl; 
@@ -75,9 +75,8 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        foreach(b; defaultBaseSize.iota)
+        foreach(b; (defaultBaseSize * testMultiplier).iota)
         {
-            import std.random : unpredictableSeed; 
             auto currentSeed = unpredictableSeed();
             
             size_t M; 
@@ -103,19 +102,16 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        foreach(b; defaultBaseSize.iota)
+        foreach(b; (defaultBaseSize * testMultiplier).iota)
         {
-            import std.random : unpredictableSeed; 
             auto currentSeed = unpredictableSeed();
             size_t M; 
             auto vT = generateVEBtree!("UT: black box test universe: ", 1 << _)
                     (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
             assert(vT.universe == M); 
-            log("vT.universe: ", vT.universe, " (vT.universe_-1).nextPow2.hSR + 1: ", (vT.universe_-1).nextPow2.hSR + 1);
         }
     }
 }
-
 
 /**
 The predecessor search method of the van Emde Boas tree. 
@@ -395,6 +391,34 @@ bool remove(T)(ref T root, size_t val)
         }
 
         return res;
+}
+
+///
+static foreach(_; 1 .. size_t.sizeof - 1)
+{
+    unittest
+    {
+        foreach(b; (defaultBaseSize * testMultiplier).iota)
+        {
+            
+            auto currentSeed = unpredictableSeed();
+            size_t M; 
+            auto vT = generateVEBtree!("UT: black box test outer interface: ", 1 << _)
+                    (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
+            size_t N = uniform(0UL, 2 * M); // independent parameter for testing
+            
+            // make an array of length N
+            size_t[] testArray = new size_t[N]; 
+            // fill the array with all possible values 
+            foreach(ref el; testArray)
+            {
+                el = vT.maxSizeBound.iota.choice;
+            }
+
+            
+            
+        }
+    }
 }
 
 ///

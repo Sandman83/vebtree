@@ -21,6 +21,7 @@ version(unittest)
     import std.container; // red black tree may be used in unittests for comparison.
     import std.math : sqrt; 
     public import std.parallelism : parallel; 
+    public import std.random; 
 
     // helping function for output a given value in binary representation
     void bin(size_t n)
@@ -31,10 +32,9 @@ version(unittest)
         logf("%d", n % 2);
     }
 
-    enum bitness = CHAR_BIT * size_t.sizeof; 
-    /// precalculated powers of two table for unit testing
-    enum powersOfTwo = (bitness).iota.map!(a => size_t(1) << a); 
     enum defaultBaseSize = CHAR_BIT * size_t.sizeof; 
+    /// precalculated powers of two table for unit testing
+    enum powersOfTwo = defaultBaseSize.iota.map!(a => size_t(1) << a); 
     enum testMultiplier = 1; //16
     ///
 
@@ -276,14 +276,24 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     unittest
     {
         enum baseSize = 1 << _; 
-        foreach(b; bitness.iota)
+        foreach(b; (defaultBaseSize * testMultiplier).iota)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
-            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 1, baseSize, M);
+            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 1UL, baseSize, M);
 
             assert(vT.value_ == 0);
-            assert(vT.ptr is null);
+            if(vT.isLeaf)
+            {
+                assert(vT.ptr is null);
+                assert(vT.capacity == baseSize);
+            }
+            else
+            {
+                assert(!(vT.ptr is null));
+                assert(vT.capacity == (vT.universe - 1).nextPow2);
+            }
+            
             assert(vT.empty == true);
             assert(vT.min == NIL); 
             assert(vT.max == NIL); 
@@ -293,32 +303,27 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             assert(vT().back == NIL); 
             assert(vT.length == 0);
             assert(vT.universe == M);
-            assert(vT.capacity == baseSize);
-            size_t N = uniform(0UL, baseSize); // independent parameter for testing
-            auto testArray = (2 * M).iota.randomCover.array; 
-            auto cacheArray = new size_t[N];
             
-            size_t counter; 
+            size_t N = uniform(0UL, 2 * M); // independent parameter for testing
+            auto testArray = N.iota.randomCover.array; 
+            size_t[] cacheArray;
+            cacheArray.reserve(N);
 
             foreach(testNumber; testArray)
             {
                 assert(vT.universe == M);
-                if(counter == N) break; 
 
                 const insertResult = vT.insert(testNumber);
                 
                 if(insertResult)
                 {
                     assert(!vT.empty);
-                    cacheArray[counter] = testNumber;
-                    ++counter;
+                    cacheArray ~= testNumber;
                 }
             }
-            
-            //const originalCacheArray = cacheArray.dup; 
+
             cacheArray.sort;
             
-            assert(vT.ptr is null);
             assert(vT.empty == !N);
             foreach(el; cacheArray)
             {
@@ -436,7 +441,7 @@ package struct VEBroot(size_t baseSize)
     the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
     changes dynamically with the architecture used. 
     */
-    enum maxSizeBound = size_t(1) << baseSize/2; // == uint.max + 1 on a 64-bit system
+    enum maxSizeBound = size_t(1) << defaultBaseSize/2; // == uint.max + 1 on a 64-bit system
 
     size_t toHash() const nothrow
     {
@@ -542,7 +547,7 @@ package struct VEBroot(size_t baseSize)
     /**
     yields the next power of two, based un universe size
     */
-    size_t capacityImpl() @nogc
+    size_t capacityImpl() const @nogc
     {
         return baseSize;
     }
@@ -897,15 +902,15 @@ package struct VEBroot(size_t baseSize)
     }
     size_t index(size_t x, size_t y) const @nogc
     {
-        return .index(universe_, x, y); 
+        return .index(this.capacity, x, y); //universe_
     }
     size_t low(size_t val) const @nogc
     {
-        return .low(universe_, val); 
+        return .low(this.capacity, val); //universe_
     }
     size_t high(size_t val) const @nogc
     {
-        return .high(universe_, val); 
+        return .high(this.capacity, val); //universe_
     }
     bool isLeaf() const @nogc 
     {
