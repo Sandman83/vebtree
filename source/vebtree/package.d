@@ -57,6 +57,18 @@ emulating bigger entities.
 //"--DRT-gcopt=profile:1 minPoolSize:16"
 
 module vebtree; 
+debug 
+{
+    version(DigitalMars)
+    {
+        import std.experimental.logger; 
+    }
+    version(LDC)
+    {
+        import std.stdio; 
+        alias trace = writeln; 
+    }
+}
 public import vebtree.root; 
 import std.typecons : Flag, Yes, No; 
 import std.experimental.logger; 
@@ -241,7 +253,8 @@ do
 {
     debug
     {
-        if(debugNumbers.canFind(val)  && debugFunction == "insert")
+        version(unittest)
+        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("inserting ", val, " #1");
             //trace("root.low(val): ", root.low(val)); 
@@ -256,6 +269,7 @@ do
 
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("inserting ", val, " #2");
@@ -266,6 +280,7 @@ do
 
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("inserting ", val, " #3");
@@ -276,6 +291,7 @@ do
     {
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("inserting ", val, " #4");
@@ -284,6 +300,7 @@ do
         assert(root.empty);
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.min #1: ", root.min); 
@@ -296,6 +313,7 @@ do
 
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.min #2: ", root.min); 
@@ -310,6 +328,7 @@ do
         assert(!root.empty);
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.min #3: ", root.min); 
@@ -322,6 +341,7 @@ do
         
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.min #4: ", root.min); 
@@ -362,6 +382,7 @@ do
 
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             //trace("kuku #1");
@@ -372,6 +393,7 @@ do
     {
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 //trace("kuku #2");
@@ -385,6 +407,7 @@ do
     {
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.max: ", root.max);
@@ -395,6 +418,7 @@ do
 
         debug
         {
+            version(unittest)
             if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
                 trace("root.max: ", root.max);
@@ -407,6 +431,7 @@ do
     
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("val is currently: ", val);
@@ -417,6 +442,7 @@ do
     
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("val: ", val);
@@ -440,6 +466,7 @@ do
 
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("root.low(val): ", root.low(val)); 
@@ -452,6 +479,7 @@ do
 
     debug
     {
+        version(unittest)
         if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
             trace("res: ", res);

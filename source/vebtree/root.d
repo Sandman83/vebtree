@@ -7,11 +7,24 @@ public import std.range;
 public import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
 import std.algorithm.iteration : each, map, uniq, sum, filter;
-import std.algorithm.searching : until, find, canFind, maxIndex, count, minElement, maxElement; 
+public import std.algorithm.searching : until, find, canFind, maxIndex, count, minElement, maxElement; 
 public import std.algorithm.sorting : sort, isSorted; 
 import std.algorithm.setops : setSymmetricDifference; 
 import std.algorithm.mutation : remove; 
-debug import std.experimental.logger; 
+debug 
+{
+    version(DigitalMars)
+    {
+        import std.experimental.logger; 
+    }
+    version(LDC)
+    {
+        import std.stdio; 
+        alias trace = writeln; 
+    }
+}
+
+enum defaultBaseSize = CHAR_BIT * size_t.sizeof; 
 
 version(unittest)
 {
@@ -23,7 +36,7 @@ version(unittest)
     public import std.parallelism : parallel; 
     public import std.random; 
     
-    size_t[] debugNumbers = [34956, 140, 12];
+    size_t[] debugNumbers;
     string debugFunction; 
     bool print; 
 
@@ -33,10 +46,9 @@ version(unittest)
         /* step 1 */
         if (n > 1) bin(n/2);
         /* step 2 */
-        logf("%d", n % 2);
+        trace("%d", n % 2);
     }
-
-    enum defaultBaseSize = CHAR_BIT * size_t.sizeof; 
+    
     /// precalculated powers of two table for unit testing
     enum powersOfTwo = defaultBaseSize.iota.map!(a => size_t(1) << a); 
     enum testMultiplier = 1; //16
@@ -174,8 +186,8 @@ unittest
     const M = uniform(1UL,halfSizeT.max); //set universe size to some integer. 
     assert(M); 
     size_t U = M.nextPow2; 
-    log("M: ", M); 
-    log("M.nextPow2: ", M.nextPow2);
+    trace("M: ", M); 
+    trace("M.nextPow2: ", M.nextPow2);
     assert(U); 
     auto x = uniform(0UL, U); 
 
@@ -290,7 +302,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
-            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 2UL, baseSize, M);
+            auto vT = generateVEBtree!("UT: white box test: ", 1 << _)(b, currentSeed, 2UL, baseSize, M);
 
             assert(vT.value_ == 0);
             if(vT.isLeaf)
@@ -754,31 +766,31 @@ package struct VEBroot(size_t baseSize)
         universe_ = val;
         debug
         {
-            //log(1);
+            //trace(1);
         }
         assert(!length_ == this.empty);
         debug
         {
-            //log(2);
+            //trace(2);
         }
         if(!isLeaf)
         {
             debug
             {
-                //log(3);
+                //trace(3);
             }
             assert(this.capacity == (universe_ - 1).nextPow2);
             const arrSize = this.capacity.hSR + 1; 
 
             debug
             {
-                //log(4);
+                //trace(4);
             }
 
             debug
             {
                 assert(ptr_ is null);
-                //log(5); 
+                //trace(5); 
             }
             
             // reserve enough place for the summary and the children cluster
@@ -786,24 +798,25 @@ package struct VEBroot(size_t baseSize)
             
             debug
             {
-                //log(6); 
+                //trace(6); 
                 assert(!(ptr_ is null));
-                //log(7); 
+                //trace(7); 
                 foreach(i; 0 .. arrSize)
                 {
-                    //log(8); 
+                    //trace(8); 
                     assert(ptr_[i].universe_ == 0);
-                    //log(9); 
+                    //trace(9); 
                 }
-                //log(10); 
+                //trace(10); 
+                version(unittest)
                 if(debugNumbers.canFind(val) || print)
                 {
-                    log("universe_.hSR: ", universe_.hSR);
-                    log("universe_.lSR: ", universe_.lSR);
-                    log("(universe_ - 1).nextPow2.hSR: ", (universe_ - 1).nextPow2.hSR);
-                    log("(universe_ - 1).nextPow2.lSR: ", (universe_ - 1).nextPow2.lSR);
-                    log("this.capacity: ", this.capacity); 
-                    log("this.universe_: ", this.universe_);
+                    trace("universe_.hSR: ", universe_.hSR);
+                    trace("universe_.lSR: ", universe_.lSR);
+                    trace("(universe_ - 1).nextPow2.hSR: ", (universe_ - 1).nextPow2.hSR);
+                    trace("(universe_ - 1).nextPow2.lSR: ", (universe_ - 1).nextPow2.lSR);
+                    trace("this.capacity: ", this.capacity); 
+                    trace("this.universe_: ", this.universe_);
                     print = true; 
                 }
                 
@@ -816,14 +829,14 @@ package struct VEBroot(size_t baseSize)
             
             debug
             {
-                //log(11); 
+                //trace(11); 
             }
             // add higher square root children with lower square root universe each.
             foreach(i, ref el; ptr_[1 .. arrSize])
             {
                 debug
                 {
-                    //log(12); 
+                    //trace(12); 
                 }
                 assert((universe_ - 1).nextPow2.lSR >= 2); 
                 assert(this.capacity == (universe_ - 1).nextPow2);
@@ -846,9 +859,10 @@ package struct VEBroot(size_t baseSize)
         {
             debug
             {
-                //log(14); 
+                //trace(14); 
                 if(isLeaf)
                 {
+                    version(unittest)
                     print = false; 
                 }
             }
@@ -1123,7 +1137,7 @@ package struct VEBroot(size_t baseSize)
         {
             if(universe_ < 2)
             {
-                log("universe_:", universe_); 
+                trace("universe_:", universe_); 
             }
         } 
         if(!(ptr is null))
