@@ -1,14 +1,14 @@
 module vebtree.root; 
 import vebtree; 
 import std.bitmanip : taggedPointer; 
-import core.bitop;
+public import core.bitop;
 import std.traits;
 public import std.range; 
 public import std.math : nextPow2; 
 import core.stdc.limits : CHAR_BIT; 
 import std.algorithm.iteration : each, map, uniq, sum, filter;
 import std.algorithm.searching : until, find, canFind, maxIndex, count, minElement, maxElement; 
-import std.algorithm.sorting : sort, isSorted; 
+public import std.algorithm.sorting : sort, isSorted; 
 import std.algorithm.setops : setSymmetricDifference; 
 import std.algorithm.mutation : remove; 
 debug import std.experimental.logger; 
@@ -22,6 +22,10 @@ version(unittest)
     import std.math : sqrt; 
     public import std.parallelism : parallel; 
     public import std.random; 
+    
+    size_t[] debugNumbers = [34956, 140, 12];
+    string debugFunction; 
+    bool print; 
 
     // helping function for output a given value in binary representation
     void bin(size_t n)
@@ -49,10 +53,10 @@ version(unittest)
         (size_t identifier2, uint currentSeed, size_t min, size_t max, ref size_t M)
     {
         static assert(baseSize > 1); 
-        static assert((baseSize & (baseSize - 1)) == 0); 
-        assert(max > min); 
+        static assert((baseSize & (baseSize - 1)) == 0);  
+        assert(min >= 2); 
         rndGen.seed(currentSeed); //initialize the random generator
-        M = uniform(min, max); // parameter for construction
+        M = uniform(min, max + 1); // parameter for construction
         trace(identifier1,": ", identifier2, " baseSize: ", baseSize, "; seed: ", currentSeed, " M: ", M); 
         return vebRoot!baseSize(M);
     }
@@ -96,7 +100,7 @@ This function returns the higher square root of the given input. It is needed in
 of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
 summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
-package size_t hSR(size_t value) @nogc //nothrow 
+package size_t hSR(size_t value) @nogc  
 {
     return size_t(1) << (bsr(value)/2 + ((value.bsr & 1) || ((value != 0) && (value & (value - 1))))); 
 }
@@ -121,7 +125,7 @@ This function returns the lower square root of the given input. It is needed by 
 high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
 lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
-package size_t lSR(size_t value) @nogc //nothrow 
+package size_t lSR(size_t value) @nogc  
 {
     return size_t(1) << (bsr(value)/2);
 }
@@ -147,14 +151,19 @@ unittest
 This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. It is a part of the ideal indexing function.
 */
-private size_t high(size_t universe, size_t value) @nogc nothrow 
+private size_t high(size_t universe, size_t value) @nogc  
 in
 {
-    assert((universe & (universe - 1)) == 0); 
+    //assert((universe & (universe - 1)) == 0); 
+}
+out(result)
+{
+    assert(result == value / universe.lSR);
 }
 do
 {
-    return value >> (bsr(universe) / 2);
+    return value >> (bsr(universe) / 2); // bithacks
+    //return value / universe.lSR; // keithschwarz
 }
 //
 unittest
@@ -177,14 +186,15 @@ unittest
 This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
 value inside a cluster. It is part of the ideal indexing function
 */
-private size_t low(size_t universe, size_t value) @nogc nothrow
+private size_t low(size_t universe, size_t value) @nogc 
 in
 {
-    assert((universe & (universe - 1)) == 0); 
+    //assert((universe & (universe - 1)) == 0); 
 }
 do
 {
-    return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
+    //return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
+    return value % universe.lSR; 
 }
 //
 unittest
@@ -203,9 +213,9 @@ unittest
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
 relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
 */
-private size_t index(size_t universe, size_t x, size_t y) @nogc //nothrow
+private size_t index(size_t universe, size_t x, size_t y) @nogc 
 {
-    return (x * lSR(universe) + y);
+    return (x * universe.lSR + y);
 }
 //
 unittest
@@ -276,11 +286,11 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     unittest
     {
         enum baseSize = 1 << _; 
-        foreach(b; (defaultBaseSize * testMultiplier).iota)
+        foreach(b; (defaultBaseSize * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
-            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 1UL, baseSize, M);
+            auto vT = generateVEBtree!("UT: white box test #1: ", 1 << _)(b, currentSeed, 2UL, baseSize, M);
 
             assert(vT.value_ == 0);
             if(vT.isLeaf)
@@ -305,9 +315,15 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             assert(vT.universe == M);
             
             size_t N = uniform(0UL, 2 * M); // independent parameter for testing
-            auto testArray = N.iota.randomCover.array; 
-            size_t[] cacheArray;
+            // make an array of length N
+            size_t[] testArray, cacheArray;
+            testArray = new size_t[N]; 
             cacheArray.reserve(N);
+            // fill the array with all possible values 
+            foreach(ref el; testArray)
+            {
+                el = (2 * M).iota.choice;
+            }
 
             foreach(testNumber; testArray)
             {
@@ -324,7 +340,15 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 
             cacheArray.sort;
             
-            assert(vT.empty == !N);
+            if(cacheArray.empty)
+            {
+                assert(vT.empty);
+            }
+            else
+            {
+                assert(!vT.empty);
+            }
+            
             foreach(el; cacheArray)
             {
                 assert(bt(&vT.value_, el));
@@ -452,6 +476,11 @@ package struct VEBroot(size_t baseSize)
     yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
     */
     typeof(this) dup() 
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         auto retVal = typeof(this)(universe_); 
         foreach(el; opCall())
@@ -462,6 +491,11 @@ package struct VEBroot(size_t baseSize)
     }
 
     bool opEquals(T)(auto ref T input) const if(isIterable!T)
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         static if(hasLength!T)
         {
@@ -497,7 +531,15 @@ package struct VEBroot(size_t baseSize)
 
     invariant
     {
-        assert(universe_); 
+        if(!(ptr is null))
+        {
+            assert(universe_ >= 2);
+        }
+        if(universe_ <= baseSize)
+        {
+            assert(this.capacity == baseSize); 
+            assert(ptr is null); 
+        }
     }
 
     /**
@@ -505,33 +547,61 @@ package struct VEBroot(size_t baseSize)
     the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
     bool opBinaryRight(string op)(size_t key) @nogc if(op == "in")
+    in
+    {
+        if(!(ptr is null))
+        {
+            assert(universe_ >= 2); 
+        }
+    }
+    do
     {
         debug
         {
         }
         if(key >= this.capacity)
         {
+            debug
+            {
+            }
             return false; 
         }
 
         if(this.empty)
         {
+            debug
+            {
+            }
             // if an empty intermediate node is found, nothing is stored below it. 
             return false; 
         } 
 
+        debug
+        {
+        }
         if(this.isLeaf)
         {
+            debug
+            {
+            }
             assert(key < baseSize);
+
+            debug
+            {
+            }
             return bt(&value_, key) != 0;
-            //return (*static_cast<long*>(root) & (1 << value)) != 0;
         }
         else
         {
-            
+            debug
+            {
+            }
             // case of a single valued range. 
             if(key == this.min || key == this.max)
             {
+                debug
+                {
+                }
                 return true; 
             }
             
@@ -541,13 +611,28 @@ package struct VEBroot(size_t baseSize)
                 2. ask it about the reduced low(value, uS) value
                 3. use the lSR(uS) universe size of the childe node. 
             */
-            return low(key) in cluster[high(key)]; 
+            debug
+            {
+                if(!(ptr[high(key) + 1].ptr is null))
+                {
+                    assert(ptr[high(key) + 1].universe_ >= 2); 
+                }
+            }
+            return low(key) in ptr[high(key) + 1]; 
         }
     }
     /**
     yields the next power of two, based un universe size
     */
     size_t capacityImpl() const @nogc
+    out
+    {
+        if(!(ptr is null))
+        {
+            assert(universe_ >= 2); 
+        }
+    }
+    do
     {
         return baseSize;
     }
@@ -556,6 +641,11 @@ package struct VEBroot(size_t baseSize)
     the opApply method grants the correct foreach behavior, nogc version
     */
     int opApply(scope int delegate(ref size_t) @nogc operations) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return opApplyImpl(operations);
     }
@@ -564,12 +654,22 @@ package struct VEBroot(size_t baseSize)
     the opApply method grants the correct foreach behavior
     */
     int opApply(scope int delegate(ref size_t) operations)
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return opApplyImpl(operations);
     }
 
     // with the trick of https://forum.dlang.org/thread/erznqknpyxzxqivawnix@forum.dlang.org
     private int opApplyImpl(O)(O operations)
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         int result; 
 
@@ -603,6 +703,11 @@ package struct VEBroot(size_t baseSize)
     []-slicing. Yields a "random access range" with the content of the tree, always containing zero and universe as keys
     */
     auto opIndex()
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return vebTree!(Yes.inclusive, this)();
     }
@@ -611,6 +716,11 @@ package struct VEBroot(size_t baseSize)
     ()-slicing. Yields a "random access range" with the content of the tree. Keys can be NIL. 
     */
     auto opCall()
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return vebTree!(No.inclusive, this)();
     }    
@@ -630,10 +740,14 @@ package struct VEBroot(size_t baseSize)
     which is passed on every call to the root node. In this way this, extern saved value has the role of being
     outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
     */
-    this(size_t val) // nothrow 
+    this(size_t val)  
     in
     {
-        assert(val); 
+        assert(val >= 2); 
+    }
+    out
+    {
+        assert(universe_ >= 2); 
     }
     do
     {
@@ -653,8 +767,8 @@ package struct VEBroot(size_t baseSize)
             {
                 //log(3);
             }
-            
-            const arrSize = (universe_ - 1).nextPow2.hSR + 1; 
+            assert(this.capacity == (universe_ - 1).nextPow2);
+            const arrSize = this.capacity.hSR + 1; 
 
             debug
             {
@@ -678,31 +792,52 @@ package struct VEBroot(size_t baseSize)
                 foreach(i; 0 .. arrSize)
                 {
                     //log(8); 
-                    assert(arr[i].universe == 0);
+                    assert(ptr_[i].universe_ == 0);
                     //log(9); 
                 }
                 //log(10); 
+                if(debugNumbers.canFind(val) || print)
+                {
+                    log("universe_.hSR: ", universe_.hSR);
+                    log("universe_.lSR: ", universe_.lSR);
+                    log("(universe_ - 1).nextPow2.hSR: ", (universe_ - 1).nextPow2.hSR);
+                    log("(universe_ - 1).nextPow2.lSR: ", (universe_ - 1).nextPow2.lSR);
+                    log("this.capacity: ", this.capacity); 
+                    log("this.universe_: ", this.universe_);
+                    print = true; 
+                }
+                
             }
             
             // add the summary with its universe of higher squaure root of the current universe
-            summary = typeof(this)((universe_ - 1).nextPow2.hSR); 
+            assert((universe_ - 1).nextPow2.hSR >= 2); 
+            assert(this.capacity == (universe_ - 1).nextPow2); 
+            ptr_[0] = typeof(this)(this.capacity.hSR); 
             
             debug
             {
                 //log(11); 
             }
             // add higher square root children with lower square root universe each.
-            foreach(i, ref el; cluster)
+            foreach(i, ref el; ptr_[1 .. arrSize])
             {
                 debug
                 {
                     //log(12); 
                 }
-                el = typeof(this)((universe_ - 1).nextPow2.lSR); 
+                assert((universe_ - 1).nextPow2.lSR >= 2); 
+                assert(this.capacity == (universe_ - 1).nextPow2);
+                el = typeof(this)(this.capacity.lSR); 
             }
             debug
             {
-                //log(13); 
+                if(!(ptr_ is null))
+                {
+                    foreach(ref el; ptr_[0 .. arrSize])
+                    {
+                        assert(el.universe_ >= 2); 
+                    }
+                }
             }
         }
 
@@ -712,6 +847,10 @@ package struct VEBroot(size_t baseSize)
             debug
             {
                 //log(14); 
+                if(isLeaf)
+                {
+                    print = false; 
+                }
             }
         }
     }
@@ -720,6 +859,11 @@ package struct VEBroot(size_t baseSize)
     This tree has a length notion: it is the current number of inserted elements. 
     */
     size_t length() const @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return length_; 
     }
@@ -730,6 +874,11 @@ package struct VEBroot(size_t baseSize)
     the universe size is reduced to the base size. Then the overloaded remove method is called. 
     */
     bool removeImpl(size_t key) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return length = length - (btr(&value_, key) != 0); 
     }
@@ -738,6 +887,11 @@ package struct VEBroot(size_t baseSize)
     the universe size is reduced to the base size. Then the overloaded successor method is called. 
     */
     size_t nextImpl(size_t val) const @nogc 
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         debug
         {
@@ -773,6 +927,11 @@ package struct VEBroot(size_t baseSize)
         return NIL; 
     }
     size_t prevImpl(size_t val) @nogc 
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {  
         debug
         {
@@ -803,6 +962,11 @@ package struct VEBroot(size_t baseSize)
         return NIL;
     }
     bool insertImpl(size_t key) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         debug
         {
@@ -810,17 +974,22 @@ package struct VEBroot(size_t baseSize)
         return length = length + (bts(&value_, key) == 0);
     }
 
-    bool nullifyImpl() @nogc
-    {
-        value_ = 0; 
-        return true; 
-    }
     bool minImpl(size_t key) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         // the passed value should not exceed the allowed size of a size/2
         return insertImpl(key);        
     }
     bool maxImpl(size_t key) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return insertImpl(key);
     }
@@ -828,6 +997,10 @@ package struct VEBroot(size_t baseSize)
     in
     {
         assert(value_);
+    }
+    out
+    {
+        assert(universe_ >= 2); 
     }
     do
     {
@@ -837,6 +1010,10 @@ package struct VEBroot(size_t baseSize)
     in
     {
         assert(value_);
+    }
+    out
+    {
+        assert(universe_ >= 2); 
     }
     do
     {
@@ -854,6 +1031,10 @@ package struct VEBroot(size_t baseSize)
             input > length ? assert(input - length == 1) : assert(length - input == 1);
         }
     }
+    out
+    {
+        assert(universe_ >= 2); 
+    }
     do
     {
         const retVal = length != input; 
@@ -866,60 +1047,112 @@ package struct VEBroot(size_t baseSize)
         }
         else
         {
-            filled_ = false; 
+            emptyImpl(true);
         }
 
         return retVal; 
     }
 
     bool empty() const @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         if(isLeaf) return value_ == 0; 
         return !filled_;
     }
 
+    void emptyImpl(bool val) @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
+    {
+        filled_ = !val; 
+        // emptyfy on val = true. --> empty(root, true) leads to empty root
+        if(val)
+        {
+            value_ = 0; 
+        }
+    }
+
     bool emptyImpl() @nogc 
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return value_ == 0; 
     }
-    ref summary() inout
-    in
-    {
-        assert(!isLeaf);
-    }
-    do
-    {
-        return arr[0];
-    }
-    auto cluster() inout
-    in
-    {
-        assert(!isLeaf);
-    }
-    do
-    {
-        return arr[1 .. $]; 
-    }
+    
     size_t index(size_t x, size_t y) const @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return .index(this.capacity, x, y); //universe_
     }
     size_t low(size_t val) const @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return .low(this.capacity, val); //universe_
     }
     size_t high(size_t val) const @nogc
+    out
+    {
+        assert(universe_ >= 2); 
+    }
+    do
     {
         return .high(this.capacity, val); //universe_
     }
     bool isLeaf() const @nogc 
+    out
+    {
+        debug
+        {
+            if(universe_ < 2)
+            {
+                log("universe_:", universe_); 
+            }
+        } 
+        if(!(ptr is null))
+        {
+            assert(universe_ >= 2); 
+        }
+    }
+    do
     {
         return universe_ <= baseSize; 
     }
 
+    auto ref ptr() inout
+    out
+    {
+        if(cast(size_t)_ > 1)
+        {
+            assert(universe_ >= 2); 
+        }
+    }
+    do
+    {
+        return cast(typeof(this)*)(cast(size_t)_ & ~size_t(1));
+    }
+
     size_t value_;
     size_t universe_;
-    size_t length_;
+    size_t length_; 
+    private: 
     union
     {
         struct 
@@ -934,22 +1167,11 @@ package struct VEBroot(size_t baseSize)
             typeof(this)* ptr_; 
         }
     }
-
-    package: 
-    auto arr() inout
-    {
-        return ptr_[0 .. (universe_-1).nextPow2.hSR + 1];
-    }
-    
-    auto ref ptr() 
-    {
-        return cast(typeof(this)*)(cast(size_t)_ & ~size_t(1));
-    }
 }
 
 private struct VEBtree(Flag!"inclusive" inclusive, alias root)
 {
-    auto opBinaryRight(string op)(size_t key) @nogc //nothrow 
+    auto opBinaryRight(string op)(size_t key) @nogc  
         if(op == "in") 
     {
         return key in root; 
