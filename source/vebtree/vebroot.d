@@ -282,12 +282,12 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             assert(vT.value_ == 0);
             if(vT.isLeaf)
             {
-                assert(vT.ptr is null);
+                assert(vT.ptr_ is null);
                 assert(vT.capacity == baseSize);
             }
             else
             {
-                assert(!(vT.ptr is null));
+                assert(!(vT.ptr_ is null));
                 assert(vT.capacity == (vT.universe - 1).nextPow2);
             }
             
@@ -505,14 +505,14 @@ package struct VEBroot(size_t baseSize)
 
     invariant
     {
-        if(!(ptr is null))
+        if(!(ptr_ is null))
         {
             assert(universe_ >= 2);
         }
         if(universe_ <= baseSize)
         {
             assert(this.capacity == baseSize); 
-            assert(ptr is null); 
+            assert(ptr_ is null); 
         }
     }
 
@@ -523,7 +523,7 @@ package struct VEBroot(size_t baseSize)
     bool opBinaryRight(string op)(size_t key) @nogc if(op == "in")
     in
     {
-        if(!(ptr is null))
+        if(!(ptr_ is null))
         {
             assert(universe_ >= 2); 
         }
@@ -587,12 +587,12 @@ package struct VEBroot(size_t baseSize)
             */
             debug
             {
-                if(!(ptr[high(key)].ptr is null))
+                if(!(ptr_[high(key)].ptr_ is null))
                 {
-                    assert(ptr[high(key)].universe_ >= 2); 
+                    assert(ptr_[high(key)].universe_ >= 2); 
                 }
             }
-            return low(key) in ptr[high(key)]; 
+            return low(key) in ptr_[high(key)]; 
         }
     }
     /**
@@ -760,19 +760,7 @@ package struct VEBroot(size_t baseSize)
                 }
             }
         }
-
         assert(!length_ == this.empty);
-
-        debug
-        {
-            if(isLeaf)
-            {
-                version(unittest)
-                {
-                    //print = false; 
-                }
-            }
-        }
     }
 
     /**
@@ -805,7 +793,7 @@ package struct VEBroot(size_t baseSize)
 
         debug{}
 
-        if(val + 1 >= baseSize) { return NIL; }
+        if(val + 1 >= baseSize) return NIL;
 
         debug{}
 
@@ -815,7 +803,7 @@ package struct VEBroot(size_t baseSize)
 
         debug{}
 
-        if(maskedVal != 0) { return maskedVal.bsf; }
+        if(maskedVal != 0) return maskedVal.bsf;
 
         debug{}
 
@@ -858,51 +846,21 @@ package struct VEBroot(size_t baseSize)
         // the passed value should not exceed the allowed size of a size/2
         return insertImpl(key);
     }
-    
-    size_t max_() const @nogc
-    {
-        return (value_ & higherMask) >> (CHAR_BIT * size_t.sizeof/2);
-    }
-
-    bool max_(size_t val) @nogc
-    {
-        value_ = value_ & lowerMask; 
-        value_ = value_ | (val << (CHAR_BIT * size_t.sizeof/2));
-        return true;
-    }
-
-    size_t min_() const @nogc
-    {
-        return value_ & lowerMask; 
-    }
-
-    bool min_(size_t val) @nogc
-    {
-        value_ = value_ & higherMask;
-        value_ = value_ | val;
-        return true; 
-    }
 
     bool maxImpl(size_t key) @nogc
     {
         return insertImpl(key);
     }
+    
     size_t maxImpl() const @nogc
-    in
     {
-        assert(value_);
-    }
-    do
-    {
+        if(value_ == 0) return NIL; 
         return bsr(value_); 
     }
+
     size_t minImpl() const @nogc
-    in
     {
-        assert(value_);
-    }
-    do
-    {
+        if(value_ == 0) return NIL; 
         return bsf(value_);
     }
     bool length(size_t input) @nogc
@@ -961,15 +919,9 @@ package struct VEBroot(size_t baseSize)
         return universe_ <= baseSize; 
     }
 
-    auto ref ptr() inout
-    {
-        return ptr_; //cast(typeof(this)*)(cast(size_t)_ & ~size_t(1));
-    }
-
     size_t value_;
     size_t universe_;
     size_t length_; 
-    private:
     typeof(this)* ptr_;
 }
 

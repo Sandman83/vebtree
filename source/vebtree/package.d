@@ -176,8 +176,9 @@ size_t max(T)(const ref T root) @nogc
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.maxImpl; 
-    return root.max_;
+    return (root.value_ & higherMask) >> (CHAR_BIT * size_t.sizeof/2);
 }
+
 /**
 The minimal contained key in the van Emde Boas tree
 */
@@ -185,7 +186,7 @@ size_t min(T)(const ref T root) @nogc
 {
     if(root.empty) { return NIL; } 
     if(root.isLeaf) return root.minImpl; 
-    return root.min_; 
+    return root.value_ & lowerMask; 
 }
 /**
 The insertion method of the van Emde Boas tree. 
@@ -269,7 +270,7 @@ bool insert(T)(ref T root, size_t val)
             }
         }
 
-        root.min_ = val; 
+        root.min = val; 
 
         debug
         {
@@ -286,7 +287,7 @@ bool insert(T)(ref T root, size_t val)
         }
         
         //max(root, val); 
-        root.max_ = val; 
+        root.max = val; 
 
         
         //printf("val: %d\n", val); 
@@ -341,13 +342,11 @@ bool insert(T)(ref T root, size_t val)
     {
         if(root.min > val)
         {
-            root.min_ = val; 
-            //min(root, val);
+            root.min = val; 
         }
         if(root.max < val)
         {
-            root.max_ = val; 
-            //max(root, val);
+            root.max = val; 
         }
         
         return root.length = root.length + 1; 
@@ -364,11 +363,11 @@ bool insert(T)(ref T root, size_t val)
 
     if(val < root.min)
     {
-        debug
-        {
-        }
-        const tmpKey = val; val = root.min; min(root, tmpKey);
-        
+        debug{}
+
+        const tmpKey = val; 
+        val = root.min;
+        root.min = tmpKey;
     }
     // a swap can not be used here, as max is itself a (property) method 
     if(val > root.max)
@@ -387,7 +386,9 @@ bool insert(T)(ref T root, size_t val)
             
         }
         
-        const tmpKey = val; val = root.max; max(root, tmpKey);
+        const tmpKey = val; 
+        val = root.max;
+        root.max = tmpKey;
 
         debug
         {
@@ -420,7 +421,7 @@ bool insert(T)(ref T root, size_t val)
         }
     }
     // calculate the index of the children cluster by high(value, uS) we want to descent to. 
-    auto nextTreeIndex = root.high(val); 
+    auto nextTreeIndex = root.high(val);
     
     debug
     {
@@ -537,7 +538,7 @@ bool remove(T)(ref T root, size_t val)
         {
             debug{}
             
-            min(root, root.max); // store a single value in this node. 
+            root.min = root.max; // store a single value in this node. 
             
             debug{}
             
@@ -547,12 +548,12 @@ bool remove(T)(ref T root, size_t val)
 
         debug{}
         
-        auto min = root.cluster[treeOffset].min; // otherwise we get the minimum from the offset child
+        auto m = root.cluster[treeOffset].min; // otherwise we get the minimum from the offset child
         
         debug{}
         
         // remove it from the child 
-        root.cluster[treeOffset].remove(min); 
+        root.cluster[treeOffset].remove(m); 
         
         debug{}
         
@@ -568,7 +569,7 @@ bool remove(T)(ref T root, size_t val)
         debug{}
         
         //anyway, the new min of the current node become the restored value of the calculated offset. 
-        .min(root, root.index(treeOffset, min)); 
+        root.min = root.index(treeOffset, m); 
         
         debug{}
         
@@ -594,7 +595,7 @@ bool remove(T)(ref T root, size_t val)
             debug{}
             
             // store a single value in this node. 
-            max(root, root.min); 
+            root.max = root.min; 
             
             debug{}
             
@@ -605,12 +606,12 @@ bool remove(T)(ref T root, size_t val)
         debug{}
         
         // otherwise we get maximum from the offset child 
-        auto max = root.cluster[treeOffset].max; 
+        auto m = root.cluster[treeOffset].max; 
         
         debug{}
         
         // remove it from the child 
-        root.cluster[treeOffset].remove(max); 
+        root.cluster[treeOffset].remove(m); 
         
         debug{}
         
@@ -626,7 +627,7 @@ bool remove(T)(ref T root, size_t val)
         debug{}
         
         // anyway, the new max of the current node become the restored value of the calculated offset. 
-        .max(root, root.index(treeOffset, max)); 
+        root.max = root.index(treeOffset, m); 
         
         debug{}
         
@@ -863,7 +864,7 @@ the empty method to inform of an empty state of the tree.
 bool empty(T)(ref T root) @nogc if(__traits(isSame, TemplateOf!T, VEBroot))
 {
     if(root.isLeaf) return root.emptyImpl; 
-    return root.min_ > root.max_;
+    return root.value_ == -NIL;
 }
 
 package:
@@ -873,6 +874,26 @@ bool setEmpty(T)(ref T root) @nogc
     const retVal = root.value_ == -NIL ? true : false; 
     root.value_ = -NIL;
     return retVal; 
+}
+
+bool min(T)(ref T root, size_t val)
+{
+    if(root.isLeaf) return root.minImpl(val); 
+    
+    root.value_ = root.value_ & higherMask;
+    const retVal = ((root.value_ & lowerMask) == val) ? false : true; 
+    root.value_ = root.value_ | val;
+    return retVal; 
+}
+
+bool max(T)(ref T root, size_t val)
+{
+    if(root.isLeaf) return root.maxImpl(val); 
+
+    root.value_ = root.value_ & lowerMask; 
+    const retVal = (root.value_ & higherMask) == (val << (CHAR_BIT * size_t.sizeof/2)) ? false : true; 
+    root.value_ = root.value_ | (val << (CHAR_BIT * size_t.sizeof/2));
+    return retVal;
 }
 
 private: 
@@ -896,17 +917,5 @@ do
 }
 auto arr(T)(inout ref T root)
 {
-    return root.ptr[0 .. root.capacity.hSR + 1];
-}
-
-bool min(T)(ref T root, size_t val)
-{
-    if(root.isLeaf) return root.minImpl(val); 
-    return (root.min_ = val); 
-}
-
-bool max(T)(ref T root, size_t val)
-{
-    if(root.isLeaf) return root.maxImpl(val); 
-    return (root.max_ = val); 
+    return root.ptr_[0 .. root.capacity.hSR + 1];
 }
