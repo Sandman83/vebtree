@@ -34,20 +34,29 @@ where the idea of bit operations is taken from.
 */
 
 module vebtree; 
-
 import vebtree.vebroot; 
 import std.traits : TemplateOf;
+
 version(unittest)
 {
     import std.parallelism : parallel; 
     import std.conv : to; 
-    import core.stdc.stdio;
+    import core.stdc.stdio : printf;
     import std.container.rbtree : redBlackTree; 
 }
 
+/**
+The tree creator function. Optionally, the base size can be provided at compile time, however, the best results are 
+achieved with the default base size of CHAR_BIT * size_t.sizeof
+*/
 auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 {
-    return VEBroot!baseSize(universe); 
+    /**
+    Two parameters are provided: 
+    - the base size is the maximal amount bits can be stored in a single node without branching (generating children)
+    - the universe is the user provided input, providing the expected amount of keys, going to be stored in the tree
+    */
+    return VEBroot!baseSize(universe);
 }
 
 /**
@@ -56,7 +65,7 @@ As a usual container, van Emde Boas tree provides the notion of capacity
 size_t capacity(T)(const ref T root) @nogc
 {
     if(root.isLeaf) return root.capacityImpl; 
-    return (root.universe_ - 1).nextPow2;    
+    return (root.universe - 1).nextPow2;    
 }
 
 /**
@@ -67,21 +76,21 @@ size_t universe(T)(ref T root) @nogc
     return root.universe_; 
 }
 
-///
 static foreach(_; 1 .. size_t.sizeof - 1)
 {
+    ///
     unittest
     {
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
-            auto vT = generateVEBtree!("UT: black box test capacity and universe_: ", 1 << _)
+            auto vT = generateVEBtree!("UT: black box test capacity and universe: ", 1 << _)
                     (b, currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
-            assert(vT.universe_ == M); 
+            assert(vT.universe == M); 
             
-            assert(vT.capacity == (vT.universe_ - 1).nextPow2,
-                to!string("vT.capacity: " ~ to!string(vT.capacity) ~ " vT.universe_: " ~ to!string(vT.universe_)));
+            assert(vT.capacity == (vT.universe - 1).nextPow2,
+                to!string("vT.capacity: " ~ to!string(vT.capacity) ~ " vT.universe: " ~ to!string(vT.universe)));
         }
     }
 }
@@ -91,21 +100,13 @@ The predecessor search method of the van Emde Boas tree.
 */
 size_t prev(T)(ref T root, size_t val) @nogc
 {
-    if(root.empty) { return NIL; }
+    if(root.empty) return NIL; 
     if(root.isLeaf) return root.prevImpl(val); 
     // if given value is greater then the stored max, the predecessor is max
-    if(val > root.max)
-    {
-        return root.max; 
-    }
+    if(val > root.max) return root.max; 
     // if given value is less then the min, no predecessor exists. 
-    if(val <= root.min)
-    {
-        return NIL;
-    }
-    /*
-    if none of the break conditions was met we have to descend further into the tree. 
-    */
+    if(val <= root.min) return NIL;
+    // if none of the break conditions was met we have to descend further into the tree. 
     auto childIndex = root.high(val); // calculate the child index by high(value, uS)
     const minlow = root.cluster[childIndex].min; // look into the child for its minimum
     // if the minimum exists and the lowered given value is greater then the child's minimum
@@ -119,10 +120,7 @@ size_t prev(T)(ref T root, size_t val) @nogc
     {
         auto predcluster = root.summary.prev(childIndex);
         // if the predecessor cluster is null return the current min, as this is the last remaining value 
-        if(predcluster == NIL)
-        {
-            return root.min; 
-        }
+        if(predcluster == NIL) return root.min; 
         // if the predecessor cluster exists, the offset is given by its maximum
         // and the result by the reconstruction of the offset. 
         return root.index(predcluster, root.cluster[predcluster].max); 
@@ -134,7 +132,7 @@ The successor search method of the van Emde Boas tree.
 */
 size_t next(T)(const ref T root, size_t val) @nogc
 {
-    if(root.empty) { return NIL; }
+    if(root.empty) return NIL;
     if(root.isLeaf) return root.nextImpl(val); 
     // if given value is less then the min, return the min as successor
     if(val < root.min) return root.min; 
@@ -156,11 +154,7 @@ size_t next(T)(const ref T root, size_t val) @nogc
     {
         auto succcluster = root.summary.next(childIndex); 
         // if the successor cluster is null
-        if(succcluster == NIL)
-        {
-            // return the current max, as this is the last remaining value
-            return root.max; //? return nil?
-        }
+        if(succcluster == NIL) return root.max; 
         assert(succcluster != NIL);
         assert(root.cluster[succcluster].min != NIL);
         // if the successor cluster exists, the offset is given by its minimum
@@ -188,168 +182,37 @@ size_t min(T)(const ref T root) @nogc
     if(root.isLeaf) return root.minImpl; 
     return root.value_ & lowerMask; 
 }
+
 /**
 The insertion method of the van Emde Boas tree. 
 */
 bool insert(T)(ref T root, size_t val)
 {
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("inserting ", val, " #1");
-                //trace("root.low(val): ", root.low(val)); 
-                trace("root.capacity: ", root.capacity); 
-                trace("root.arr.length: ", root.arr.length); 
-                trace("root.universe_: ", root.universe_); 
-                trace("root.cluster.length: ", root.cluster.length);
-            }
-            */
-        }
-    }
-    
     if(val >= root.capacity) return false;
-
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("inserting ", val, " #2");
-            } 
-            */   
-        }
-    }
-
     if(root.isLeaf) return root.insertImpl(val); 
-
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("inserting ", val, " #3");
-            } 
-            */   
-        }
-    }
-
     if(root.empty) // if the current node does not contain anything put the value inside. 
     {
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("inserting ", val, " #4");
-                }
-                */
-            }
-        }
         assert(root.empty);
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.min #1: ", root.min); 
-                    trace("root.max #1: ", root.max); 
-                }
-                */
-            }
-        }
-
         root.min = val; 
-
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.min #2: ", root.min); 
-                    trace("root.max #2: ", root.max); 
-                }
-                */
-            }
-        }
-        
-        //max(root, val); 
         root.max = val; 
-
-        
-        //printf("val: %d\n", val); 
-
         assert(root.min == val); 
-
-        assert(!root.empty);
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.min #3: ", root.min); 
-                    trace("root.max #3: ", root.max); 
-                }
-                */
-            }
-        }
-        
+        assert(!root.empty);        
         assert(root.min == root.max); 
-        assert(!root.empty);
-        
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.min #4: ", root.min); 
-                    trace("root.max #4: ", root.max); 
-                }
-                */
-            }            
-        }
         assert(!root.empty); 
-        return root.length = root.length + 1; 
+        return root.length(root.length + 1); 
     }
 
     assert(!root.empty);
     assert(root.min != NIL); 
     assert(root.max != NIL); 
 
-    if(val == root.min || val == root.max)
+    if(val == root.min || val == root.max) return false;
+    // if the node contains a single value only, expand the node to a range and leave. 
+    if(root.min == root.max) 
     {
-        return false; 
-    }
-    
-    if(root.min == root.max) // if the node contains a single value only, expand the node to a range and leave. 
-    {
-        if(root.min > val)
-        {
-            root.min = val; 
-        }
-        if(root.max < val)
-        {
-            root.max = val; 
-        }
-        
-        return root.length = root.length + 1; 
+        if(root.min > val) root.min = val; 
+        if(root.max < val) root.max = val; 
+        return root.length(root.length + 1); 
     }
     /*
         if none of the cases above was true (all of them are break conditions) we have to compare the given value
@@ -357,131 +220,26 @@ bool insert(T)(ref T root, size_t val)
     */
     // a swap can not be used here, as min is itself a (property) method 
 
-    debug
-    { 
-    }
-
     if(val < root.min)
     {
-        debug{}
-
         const tmpKey = val; 
         val = root.min;
         root.min = tmpKey;
+        assert(root.min == tmpKey);
     }
     // a swap can not be used here, as max is itself a (property) method 
     if(val > root.max)
-    {
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.max: ", root.max);
-                }
-                */
-            }
-            
-        }
-        
-        const tmpKey = val; 
+    {        
+        const tmpKey = val;
         val = root.max;
         root.max = tmpKey;
-
-        debug
-        {
-            version(unittest)
-            {
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "insert")
-                {
-                    trace("root.max: ", root.max);
-                }
-                */
-            }
-            
-        }
-
-        assert(root.max == tmpKey); 
-
+        assert(root.max == tmpKey);
     }
     
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("val is currently: ", val);
-            }
-            */
-        }
-    }
     // calculate the index of the children cluster by high(value, uS) we want to descent to. 
-    auto nextTreeIndex = root.high(val);
-    
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("val: ", val);
-                trace("root.universe_: ", root.universe_); 
-                trace("(root.universe_ - 1).nextPow2: ", (root.universe_ - 1).nextPow2); 
-                trace("(root.universe_ - 1).nextPow2.hSR: ", (root.universe_ - 1).nextPow2.hSR); 
-                trace("root.high(val): ", root.high(val));
-                trace("(val >> (bsr(root.universe_) / 2)): ", (val >> (bsr(root.universe_) / 2))); 
-                trace("val / root.universe_.lSR: ", val / root.universe_.lSR); 
-                trace("val / (root.universe_ - 1).nextPow2.lSR: ", val / (root.universe_ - 1).nextPow2.lSR); 
-                trace("cluster.length: ", root.cluster.length);
-                trace("cluster should be: ", (root.universe_ - 1).nextPow2.hSR);
-                trace("nextTreeIndex: ", nextTreeIndex);
-            }
-            */
-        }    
-    }
-
-    if(root.cluster[nextTreeIndex].empty)
-    {
-        root.summary.insert(nextTreeIndex);
-    }
-
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("root.low(val): ", root.low(val)); 
-                trace("nextTreeIndex: ", nextTreeIndex); 
-                trace("root.cluster.length: ", root.cluster.length);
-            }
-            */
-        }
-    }
-
-    bool res = root.cluster[nextTreeIndex].insert(root.low(val)); 
-
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                trace("res: ", res);
-            }
-            */
-        }
-    }
-
-    return root.length = root.length + res; 
+    const nextTreeIndex = root.high(val);
+    if(root.cluster[nextTreeIndex].empty) root.summary.insert(nextTreeIndex);
+    return root.length(root.length + root.cluster[nextTreeIndex].insert(root.low(val))); 
 }
 
 /**
@@ -489,201 +247,68 @@ remove method of the van Emde Boas tree
 */
 bool remove(T)(ref T root, size_t val)
 {
-    debug{}
-
-    if(val >= root.capacity) return false; 
-    
-    
-    debug{}
-
+    if(val >= root.capacity) return false;
     if(root.empty) return false; 
-    
-    debug
-    {
-    }
-
     if(root.isLeaf) return root.removeImpl(val); 
-    
-    debug{}
-
     if(root.min == root.max) // if the current node contains only a single value
     {
-        debug{}
-
         assert(root.length == 1);
-
         if(root.min != val) return false; // do nothing if the given value is not the stored one 
-        
-        debug{}
-
-        root.setEmpty;
-        
-        debug{}
-
-        assert(root.length); 
-        return (root.length = root.length - 1); 
+        assert(root.length == 1); 
+        return root.length(root.length - 1); 
     }
-
-    debug{}
 
     if(val == root.min) // if we met the minimum of a node 
     {
-        debug{}
-
-        auto treeOffset = root.summary.min; // calculate an offset from the summary to continue with
-        
-        debug{}
-        
+        auto treeOffset = root.summary.min; // calculate an offset from the summary to continue with        
         if(treeOffset == NIL) // if the offset is invalid, then there is no further hierarchy and we are going to 
-        {
-            debug{}
-            
+        {            
             root.min = root.max; // store a single value in this node. 
-            
-            debug{}
-            
-            assert(root.length); 
-            return root.length = root.length - 1; 
+            assert(root.length == 2); 
+            return root.length(root.length - 1); 
         }
-
-        debug{}
-        
         auto m = root.cluster[treeOffset].min; // otherwise we get the minimum from the offset child
-        
-        debug{}
-        
         // remove it from the child 
         root.cluster[treeOffset].remove(m); 
-        
-        debug{}
-        
-        if(root.cluster[treeOffset].empty)
-        {
-            debug{}
-            
-            root.summary.remove(treeOffset); 
-            
-            debug{}
-        }
-       
-        debug{}
-        
+        if(root.cluster[treeOffset].empty) root.summary.remove(treeOffset); 
         //anyway, the new min of the current node become the restored value of the calculated offset. 
         root.min = root.index(treeOffset, m); 
-        
-        debug{}
-        
         assert(root.length); 
-        return root.length = root.length - 1; 
+        return root.length(root.length - 1); 
     }
-
-    debug{}
-    
     // if we met the maximum of a node 
     if(val == root.max) 
     {
-        debug{}
-        
         // calculate an offset from the summary to contiue with 
         auto treeOffset = root.summary.max; 
-        
-        debug{}
-        
         // if the offset is invalid, then there is no further hierarchy and we are going to 
         if(treeOffset == NIL) 
         {
-            debug{}
-            
             // store a single value in this node. 
-            root.max = root.min; 
-            
-            debug{}
-            
-            assert(root.length); 
-            return (root.length = root.length - 1);
+            root.max = root.min;        
+            assert(root.length == 2); 
+            return root.length(root.length - 1);
         }
-
-        debug{}
-        
         // otherwise we get maximum from the offset child 
         auto m = root.cluster[treeOffset].max; 
-        
-        debug{}
-        
         // remove it from the child 
         root.cluster[treeOffset].remove(m); 
-        
-        debug{}
-        
-        if(root.cluster[treeOffset].empty)
-        {
-            debug{}
-            
-            root.summary.remove(treeOffset); 
-
-            debug{}
-        }
-        
-        debug{}
-        
+        if(root.cluster[treeOffset].empty) root.summary.remove(treeOffset); 
         // anyway, the new max of the current node become the restored value of the calculated offset. 
         root.max = root.index(treeOffset, m); 
-        
-        debug{}
-        
         assert(root.length); 
-        return root.length = root.length - 1; 
+        return root.length(root.length - 1); 
     }
-
-    debug{}
-    
     // if no condition was met we have to descend deeper. We get the offset by reducing the value to high(value, uS)
     auto treeOffset = root.high(val); 
-    
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("root.low(val): ", root.low(val)); 
-                trace("root.high(val): ", root.high(val));
-            }
-            */
-        }
-    }
-
-    auto res = (root.length = root.length - root.cluster[treeOffset].remove(root.low(val))); 
-    
-    debug
-    {
-        version(unittest)
-        {
-            /*
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("res: ", res); 
-            }
-            */
-        }
-    }
-    
-    if(root.cluster[treeOffset].empty)
-    {
-        debug{}
-
-        root.summary.remove(treeOffset); 
-        
-        debug{}
-    }
-
+    auto res = root.length(root.length - root.cluster[treeOffset].remove(root.low(val))); 
+    if(root.cluster[treeOffset].empty) root.summary.remove(treeOffset); 
     return res;
 }
 
-///
 static foreach(_; 1 .. size_t.sizeof - 1)
 {
+    ///
     unittest
     {
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
@@ -710,7 +335,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 
             foreach(val; testArray)
             {
-                assert(vT.universe_ == M);
+                assert(vT.universe == M);
                 assert(vT.length == rbt.length); 
                 
                 bool insertExpectation; 
@@ -867,7 +492,6 @@ bool empty(T)(ref T root) @nogc if(__traits(isSame, TemplateOf!T, VEBroot))
     return root.value_ == -NIL;
 }
 
-
 package: 
 bool setEmpty(T)(ref T root) @nogc
 {
@@ -881,7 +505,6 @@ private:
 bool min(T)(ref T root, size_t val)
 {
     if(root.isLeaf) return root.minImpl(val); 
-    
     root.value_ = root.value_ & higherMask;
     const retVal = ((root.value_ & lowerMask) == val) ? false : true; 
     root.value_ = root.value_ | val;
@@ -891,33 +514,26 @@ bool min(T)(ref T root, size_t val)
 bool max(T)(ref T root, size_t val)
 {
     if(root.isLeaf) return root.maxImpl(val); 
-
     root.value_ = root.value_ & lowerMask; 
     const retVal = (root.value_ & higherMask) == (val << (CHAR_BIT * size_t.sizeof/2)) ? false : true; 
     root.value_ = root.value_ | (val << (CHAR_BIT * size_t.sizeof/2));
     return retVal;
 }
 
-private: 
 ref summary(T)(inout ref T root)
-in
-{
-    assert(!root.isLeaf);
-}
-do
+in(!root.isLeaf)
 {
     return root.arr[root.capacity.hSR];
 }
+
 auto cluster(T)(inout ref T root) 
-in
-{
-    assert(!root.isLeaf);
-}
-do
+in(!root.isLeaf)
 {
     return root.arr[0 .. root.capacity.hSR]; 
 }
+
 auto arr(T)(inout ref T root)
+in(!root.isLeaf)
 {
     return root.ptr_[0 .. root.capacity.hSR + 1];
 }

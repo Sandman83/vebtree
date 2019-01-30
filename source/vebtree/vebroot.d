@@ -863,6 +863,7 @@ package struct VEBroot(size_t baseSize)
         if(value_ == 0) return NIL; 
         return bsf(value_);
     }
+
     bool length(size_t input) @nogc
     in
     {
