@@ -426,6 +426,59 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             
             assert(vT == cacheArray, errorString); 
 
+            auto vT2 = vT.dup; 
+            assert(vT == vT2); 
+
+            if(cacheArray.length)
+            {
+                auto rndNum = cacheArray.choice; 
+                vT2.remove(rndNum); 
+                assert(!(rndNum in vT2));
+                assert(rndNum in vT);
+                //auto vT3 = vT2; 
+                //vT3.insert(rndNum); 
+                //assert(rndNum in vT3);
+                //assert(rndNum in vT2); 
+                //assert(vT2.length == vT3.length); 
+            }
+
+            const rangeExclusive = vT(); 
+            assert(vT == rangeExclusive); 
+
+            auto rangeInclusive = vT[]; 
+            import std.range : enumerate; 
+            foreach(i, el; rangeInclusive.enumerate)
+            {
+                if(i == 0)
+                {
+                    if(!(0 in vT))
+                    {
+                        continue;
+                    }
+                }
+                else if(i + 1 != rangeInclusive.length)
+                {
+                    assert(el in vT, errorString ~ format!" el: %d"(el)); 
+                }
+                else if(i + 1 == rangeInclusive.length)
+                {
+                    assert(el == vT.universe || el == vT.capacity);
+                    if(el == vT.universe)
+                    {
+                        assert(vT.max <= vT.universe || vT.max == NIL, errorString ~ format!" length: %d"(vT.length)); 
+                    }
+                    else
+                    {
+                        assert(vT.max > vT.universe, errorString); 
+                        assert(vT.max < vT.capacity, errorString); 
+                    }
+                }
+                else
+                {
+                    assert(0); 
+                }
+            }
+
             import std.range : retro, enumerate; 
             foreach (i, el; cacheArray.retro.enumerate)
             {

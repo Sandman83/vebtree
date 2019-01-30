@@ -6,10 +6,12 @@ import std.typecons : Flag, Yes, No;
 public import std.math : nextPow2;
 public import core.stdc.limits : CHAR_BIT;
 
+debug public import std.format : format;
+
 version (unittest)
 {
     import std.range;
-    import std.random;
+    //import std.random;
     import std.format;
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
@@ -36,10 +38,13 @@ version (unittest)
     enum testMultiplier = 1; //16
 
     ///
+    /*
     static assert(!isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
     static assert(isIterable!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
+    static assert(isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
     static assert(isBidirectionalRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
     static assert(!is(typeof(vebRoot(4)[2])));
+    */
 
     auto generateVEBtree(size_t baseSize)(uint currentSeed, size_t min, size_t max, ref size_t M)
     {
@@ -177,47 +182,15 @@ unittest
     assert(index(U, U.high(x), U.low(x)) == x, errorString);
 }
 
-auto vebTree(Flag!"inclusive" inclusive, alias root)()
+auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
 {
-    auto retVal = VEBtree!(inclusive, root)();
-
-    retVal.length = root.length_;
-
-    static if (inclusive)
+    static if(Args.length)
     {
-        assert(retVal.frontKey == 0);
-
-        if (vebtree.empty(root))
-        {
-            retVal.backKey = root.universe;
-            assert(!retVal.length);
-            retVal.length += 2;
-        }
-        else
-        {
-            if (root.max <= root.universe)
-            {
-                retVal.backKey = root.universe;
-                if (root.max < root.universe)
-                {
-                    retVal.length += 1;
-                }
-            }
-            else
-            {
-                assert(root.max < root.capacity);
-                retVal.backKey = root.capacity;
-                retVal.length += 1;
-            }
-
-            if (root.min) // i. e. front != 0
-                retVal.length += 1;
-        }
+        auto retVal = VEBtree!(inclusive, root)(args[0], args[1], args[2]);
     }
     else
     {
-        retVal.frontKey = root.min;
-        retVal.backKey = root.max;
+        auto retVal = VEBtree!(inclusive, root)(root.min, root.max, root.length);
     }
 
     return retVal;
@@ -235,8 +208,9 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             auto currentSeed = unpredictableSeed();
             size_t M;
 
-            const errorString = generateDebugString("UT: white box test: ", b, baseSize, currentSeed, M); 
             auto vT = generateVEBtree!(1 << _)(currentSeed, 2UL, baseSize, M);
+            assert(vT.universe == M);  
+            const errorString = generateDebugString("UT: white box test: ", b, baseSize, currentSeed, M);
 
             assert(vT.value_ == 0, errorString);
             if (vT.isLeaf)
@@ -467,7 +441,7 @@ struct VEBroot(size_t baseSize)
 
         return true;
     }
-    
+
     /**
     member method for the case universe size < base size. Overloads by passing only one parameter, which is
     the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
@@ -538,32 +512,6 @@ struct VEBroot(size_t baseSize)
         return opApplyImpl(operations);
     }
 
-    // with the trick of https://forum.dlang.org/thread/erznqknpyxzxqivawnix@forum.dlang.org
-    private int opApplyImpl(O)(O operations) const
-    {
-        int result;
-        size_t leading = this.min;
-
-        //for(size_t leading = min; leading < max; leading = this.next(leading)) 
-
-        for (size_t i = 0; i < length; ++i)
-        {
-            static if (arity!operations == 1)
-                result = operations(leading);
-            else static if (arity!operations == 2)
-                result = operations(i, leading);
-            else 
-                assert(0); 
-
-            if (result)
-                break;
-
-            leading = this.next(leading);
-        }
-
-        return result;
-    }
-
     /**
     Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
     underlying value created and set to zero by default. 
@@ -579,6 +527,9 @@ struct VEBroot(size_t baseSize)
     which is passed on every call to the root node. In this way this, extern saved value has the role of being
     outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
     */
+    
+    @disable this(this); 
+
     this(size_t val)
     in(val >= 2)
     {
@@ -611,6 +562,14 @@ struct VEBroot(size_t baseSize)
     size_t length() const @nogc
     {
         return length_;
+    }
+
+    /**
+    This yields whether the node is a leaf node.
+    */
+    bool isLeaf() const @nogc
+    {
+        return universe_ <= baseSize;
     }
 
     package:
@@ -742,25 +701,96 @@ struct VEBroot(size_t baseSize)
         return .high(this.capacity, val); //universe_
     }
 
-    bool isLeaf() const @nogc
-    {
-        return universe_ <= baseSize;
-    }
-
     size_t value_;
     size_t universe_;
     size_t length_;
     typeof(this)* ptr_;
 
+    private:
     // The empty setter of a node. This function is kept for consistency in this module. 
-    private pragma(inline, true) void setEmpty() @nogc
+    pragma(inline, true) void setEmpty() @nogc
     {
         value_ = isLeaf ? 0 : -NIL;
+    }
+
+    // with the trick of https://forum.dlang.org/thread/erznqknpyxzxqivawnix@forum.dlang.org
+    int opApplyImpl(O)(O operations) const
+    {
+        int result;
+        size_t leading = this.min;
+
+        //for(size_t leading = min; leading < max; leading = this.next(leading)) 
+
+        for (size_t i = 0; i < length; ++i)
+        {
+            static if (arity!operations == 1)
+                result = operations(leading);
+            else static if (arity!operations == 2)
+                result = operations(i, leading);
+            else 
+                assert(0); 
+
+            if (result)
+                break;
+
+            leading = this.next(leading);
+        }
+
+        return result;
     }
 }
 
 private struct VEBtree(Flag!"inclusive" inclusive, alias root)
 {
+    @disable this(); 
+
+    this(ptrdiff_t min, ptrdiff_t max, size_t length_)
+    {
+        length = length_; 
+
+        static if (inclusive)
+        {
+            if(!length)
+            {
+                backKey = root.universe; 
+                length = 2; 
+            }
+            else
+            {
+                if(min > 0)
+                {
+                    ++length;  
+                }
+
+                if(max <= root.universe)
+                {
+                    backKey = root.universe; 
+                    ++length; 
+                }
+                else if(max <= root.capacity)
+                {
+                    backKey = root.capacity; 
+                    ++length; 
+                }
+                else
+                {
+                    debug
+                    {
+                        assert(max == root.universe || max == -1, format!"max: %d\n"(max));
+                    }
+                    else
+                    {
+                        assert(0); 
+                    }
+                }
+            }
+        }
+        else
+        {
+            frontKey = min;
+            backKey = max;
+        }
+    }
     auto opBinaryRight(string op)(size_t key) @nogc if (op == "in")
     {
         return key in root;
@@ -787,8 +817,8 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
     void popFront() @nogc
     in(!empty)
     {
-        frontKey = next(frontKey);
         --length;
+        frontKey = next(frontKey);
     }
 
     typeof(backKey) back() @nogc
@@ -799,8 +829,8 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
     void popBack()
     in(length)
     {
-        backKey = prev(backKey);
         --length;
+        backKey = prev(backKey);
     }
 
     auto prev(size_t key) @nogc
@@ -819,7 +849,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
         static if(inclusive)
             debug
                 if (succ == NIL)
-                    assert(length == 1); 
+                    assert(length <= 1, format!"key: %d, length: %d\n"(key, length)); 
         
         static if (inclusive)
             if (succ == NIL)    
@@ -835,9 +865,9 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
         return !length;
     }
 
-    auto save()
+    auto save() const
     {
-        return this;
+        return vebTree!(inclusive, root)(frontKey, backKey, length);
     }
 
     size_t toHash() const nothrow { assert(0); }
@@ -860,7 +890,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
         {
             if (el != copy.front)
                 return false;
-            popFront(copy);
+            copy.popFront();
         }
 
         return true;
