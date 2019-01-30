@@ -54,7 +54,9 @@ debug
         }
     }
 }
+
 import vebtree.vebroot; 
+import std.traits : TemplateOf;
 
 auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 {
@@ -188,7 +190,7 @@ size_t max(T)(const ref T root) @nogc
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.maxImpl; 
-    return (root.value_ & higherMask) >> (CHAR_BIT * size_t.sizeof/2);
+    return root.max_;
 }
 /**
 The minimal contained key in the van Emde Boas tree
@@ -197,7 +199,7 @@ size_t min(T)(const ref T root) @nogc
 {
     if(root.empty) { return NIL; } 
     if(root.isLeaf) return root.minImpl; 
-    return root.value_ & lowerMask; 
+    return root.min_; 
 }
 /**
 The insertion method of the van Emde Boas tree. 
@@ -281,10 +283,9 @@ bool insert(T)(ref T root, size_t val)
             }
         }
 
-        empty(root, false); 
-
-        min(root, val);
-
+        
+        //min(root, val);
+        root.min_ = val; 
         debug
         {
             version(unittest)
@@ -298,11 +299,15 @@ bool insert(T)(ref T root, size_t val)
                 */
             }
         }
-
-        assert(!root.empty);
-        assert(root.min == val); 
         
-        max(root, val); 
+        //max(root, val); 
+        root.max_ = val; 
+
+        import core.stdc.stdio;
+        //printf("val: %d\n", val); 
+
+        assert(root.min == val); 
+
         assert(!root.empty);
         debug
         {
@@ -523,7 +528,7 @@ bool remove(T)(ref T root, size_t val)
         
         debug{}
 
-        empty(root, true);
+        root.setEmpty;
         
         debug{}
 
@@ -867,6 +872,21 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     }
 }
 
+
+bool empty(T)(ref T root) @nogc if(__traits(isSame, TemplateOf!T, VEBroot))
+{
+    if(root.isLeaf) return root.emptyImpl; 
+    return root.min_ > root.max_;
+}
+
+package:
+bool setEmpty(T)(ref T root) @nogc
+{
+    if(root.isLeaf) return root.setEmptyImpl;
+    else root.value_ = 1;
+    return true; 
+}
+
 private: 
 ref summary(T)(inout ref T root)
 in
@@ -890,33 +910,16 @@ do
 {
     return root.ptr[0 .. root.capacity.hSR + 1];
 }
+
 bool min(T)(ref T root, size_t val)
 {
     if(root.isLeaf) return root.minImpl(val); 
-    root.value_ = root.value_ & higherMask;
-    root.value_ = root.value_ | val;
-    return true; 
+    return (root.min_ = val); 
 }
 
 bool max(T)(ref T root, size_t val)
 {
     if(root.isLeaf) return root.maxImpl(val); 
-    root.value_ = root.value_ & lowerMask; 
-    root.value_ = root.value_ | (val << (CHAR_BIT * size_t.sizeof/2));
-    return true;
+    return (root.max_ = val); 
 }
 
-/**
-insert method. this method is called from class with a universe size given. It performs recursion calls untill
-the universe size is reduced to the base size. Then the overloaded insert method is called. 
-*/
-bool empty(T)(ref T root) @nogc
-{
-    if(root.isLeaf) return root.emptyImpl; 
-    return true; 
-}
-
-void empty(T)(ref T root, bool _) @nogc
-{
-    root.emptyImpl(_); 
-}

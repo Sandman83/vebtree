@@ -229,7 +229,8 @@ private auto vebTree(Flag!"inclusive" inclusive, alias root)()
         }
 
         assert(retVal.frontKey == 0); 
-        if(root.empty)
+
+        if(vebtree.empty(root))
         {
             retVal.backKey = root.universe;
             assert(!retVal.length); 
@@ -688,7 +689,7 @@ package struct VEBroot(size_t baseSize)
     do
     {
         universe_ = val;
-        
+        this.setEmpty; 
         debug{}
         
         assert(!length_ == this.empty);
@@ -761,6 +762,7 @@ package struct VEBroot(size_t baseSize)
         }
 
         assert(!length_ == this.empty);
+
         debug
         {
             if(isLeaf)
@@ -799,7 +801,7 @@ package struct VEBroot(size_t baseSize)
         debug{}
 
         // if this node is empty, no successor can be found here or deeper in the tree
-        if(this.empty) return NIL; 
+        if(emptyImpl) return NIL; 
 
         debug{}
 
@@ -854,8 +856,33 @@ package struct VEBroot(size_t baseSize)
     bool minImpl(size_t key) @nogc
     {
         // the passed value should not exceed the allowed size of a size/2
-        return insertImpl(key);        
+        return insertImpl(key);
     }
+    
+    size_t max_() const @nogc
+    {
+        return (value_ & higherMask) >> (CHAR_BIT * size_t.sizeof/2);
+    }
+
+    bool max_(size_t val) @nogc
+    {
+        value_ = value_ & lowerMask; 
+        value_ = value_ | (val << (CHAR_BIT * size_t.sizeof/2));
+        return true;
+    }
+
+    size_t min_() const @nogc
+    {
+        return value_ & lowerMask; 
+    }
+
+    bool min_(size_t val) @nogc
+    {
+        value_ = value_ & higherMask;
+        value_ = value_ | val;
+        return true; 
+    }
+
     bool maxImpl(size_t key) @nogc
     {
         return insertImpl(key);
@@ -895,35 +922,22 @@ package struct VEBroot(size_t baseSize)
         
         length_ = input;
 
-        if(length_)
+        if(!length_)
         {
-            filled_ = true; 
+            this.setEmpty;
         }
-        else
-        {
-            emptyImpl(true);
-        }
-
+        
         return retVal; 
     }
 
-    bool empty() const @nogc
+    bool setEmptyImpl() @nogc
     {
-        if(isLeaf) return value_ == 0; 
-        return !filled_;
+        const retVal = value_ == 0 ? false : true;
+        value_ = 0; 
+        return retVal; 
     }
 
-    void emptyImpl(bool val) @nogc
-    {
-        filled_ = !val; 
-        // emptyfy on val = true. --> empty(root, true) leads to empty root
-        if(val)
-        {
-            value_ = 0; 
-        }
-    }
-
-    bool emptyImpl() @nogc 
+    bool emptyImpl() const @nogc 
     {
         return value_ == 0; 
     }
@@ -949,27 +963,14 @@ package struct VEBroot(size_t baseSize)
 
     auto ref ptr() inout
     {
-        return cast(typeof(this)*)(cast(size_t)_ & ~size_t(1));
+        return ptr_; //cast(typeof(this)*)(cast(size_t)_ & ~size_t(1));
     }
 
     size_t value_;
     size_t universe_;
     size_t length_; 
-    private: 
-    union
-    {
-        struct 
-        {
-            mixin(taggedPointer!(
-                size_t*, "_",
-                bool, "filled_", 1
-            ));
-        }
-        struct 
-        {
-            typeof(this)* ptr_; 
-        }
-    }
+    private:
+    typeof(this)* ptr_;
 }
 
 private struct VEBtree(Flag!"inclusive" inclusive, alias root)
