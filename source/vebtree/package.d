@@ -34,29 +34,16 @@ where the idea of bit operations is taken from.
 */
 
 module vebtree; 
-debug 
-{
-    //version = bug; 
-    version(bug)
-    {
-        import std.experimental.logger; 
-    }
-    else
-    {
-        version(DigitalMars)
-        {
-            import std.experimental.logger; 
-        }
-        version(LDC)
-        {
-            import std.stdio; 
-            alias trace = writeln; 
-        }
-    }
-}
 
 import vebtree.vebroot; 
 import std.traits : TemplateOf;
+version(unittest)
+{
+    import std.parallelism : parallel; 
+    import std.conv : to; 
+    import core.stdc.stdio;
+    import std.container.rbtree : redBlackTree; 
+}
 
 auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 {
@@ -85,7 +72,6 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        import std.parallelism : parallel; 
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -93,7 +79,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             auto vT = generateVEBtree!("UT: black box test capacity and universe_: ", 1 << _)
                     (b, currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
             assert(vT.universe_ == M); 
-            import std.conv : to; 
+            
             assert(vT.capacity == (vT.universe_ - 1).nextPow2,
                 to!string("vT.capacity: " ~ to!string(vT.capacity) ~ " vT.universe_: " ~ to!string(vT.universe_)));
         }
@@ -283,9 +269,8 @@ bool insert(T)(ref T root, size_t val)
             }
         }
 
-        
-        //min(root, val);
         root.min_ = val; 
+
         debug
         {
             version(unittest)
@@ -303,7 +288,7 @@ bool insert(T)(ref T root, size_t val)
         //max(root, val); 
         root.max_ = val; 
 
-        import core.stdc.stdio;
+        
         //printf("val: %d\n", val); 
 
         assert(root.min == val); 
@@ -356,11 +341,13 @@ bool insert(T)(ref T root, size_t val)
     {
         if(root.min > val)
         {
-            min(root, val);
+            root.min_ = val; 
+            //min(root, val);
         }
         if(root.max < val)
         {
-            max(root, val);
+            root.max_ = val; 
+            //max(root, val);
         }
         
         return root.length = root.length + 1; 
@@ -698,8 +685,6 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        import std.conv : to; 
-        import std.parallelism : parallel; 
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -718,7 +703,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                 el = (2 * M).iota.choice;
             }
             
-            import std.container.rbtree : redBlackTree; 
+            
 
             auto rbt = redBlackTree!size_t();
 
@@ -872,7 +857,9 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     }
 }
 
-
+/**
+the empty method to inform of an empty state of the tree. 
+*/
 bool empty(T)(ref T root) @nogc if(__traits(isSame, TemplateOf!T, VEBroot))
 {
     if(root.isLeaf) return root.emptyImpl; 
@@ -898,15 +885,15 @@ do
     return root.arr[root.capacity.hSR];
 }
 auto cluster(T)(inout ref T root) 
-{
-    return root.arr[0 .. root.capacity.hSR]; 
-}
-auto arr(T)(inout ref T root)
 in
 {
     assert(!root.isLeaf);
 }
 do
+{
+    return root.arr[0 .. root.capacity.hSR]; 
+}
+auto arr(T)(inout ref T root)
 {
     return root.ptr[0 .. root.capacity.hSR + 1];
 }
@@ -922,4 +909,3 @@ bool max(T)(ref T root, size_t val)
     if(root.isLeaf) return root.maxImpl(val); 
     return (root.max_ = val); 
 }
-
