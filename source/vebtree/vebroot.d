@@ -868,7 +868,8 @@ package struct VEBroot(size_t baseSize)
     {
         debug{}
         
-        assert(input < maxSizeBound);
+        assert(input <= this.capacity);
+        
         if(input != length)
         {
             input > length ? assert(input - length == 1) : assert(length - input == 1);

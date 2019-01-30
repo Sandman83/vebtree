@@ -867,7 +867,8 @@ bool empty(T)(ref T root) @nogc if(__traits(isSame, TemplateOf!T, VEBroot))
     return root.value_ == -NIL;
 }
 
-package:
+
+package: 
 bool setEmpty(T)(ref T root) @nogc
 {
     if(root.isLeaf) return root.setEmptyImpl;
@@ -876,6 +877,7 @@ bool setEmpty(T)(ref T root) @nogc
     return retVal; 
 }
 
+private:
 bool min(T)(ref T root, size_t val)
 {
     if(root.isLeaf) return root.minImpl(val); 
