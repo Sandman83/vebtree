@@ -689,7 +689,7 @@ package struct VEBroot(size_t baseSize)
     do
     {
         universe_ = val;
-        this.setEmpty; 
+        setEmpty; 
         debug{}
         
         assert(!length_ == this.empty);
@@ -883,17 +883,8 @@ package struct VEBroot(size_t baseSize)
         length_ = input;
 
         if(!length_)
-        {
-            this.setEmpty;
-        }
+            setEmpty;
         
-        return retVal; 
-    }
-
-    bool setEmptyImpl() @nogc
-    {
-        const retVal = value_ == 0 ? false : true;
-        value_ = 0; 
         return retVal; 
     }
 
@@ -925,6 +916,9 @@ package struct VEBroot(size_t baseSize)
     size_t universe_;
     size_t length_; 
     typeof(this)* ptr_;
+
+    // The empty setter of a node. This function is kept for consistency in this module. 
+    private pragma(inline, true) void setEmpty() @nogc { value_ = isLeaf ? 0 : -NIL; }
 }
 
 private struct VEBtree(Flag!"inclusive" inclusive, alias root)
