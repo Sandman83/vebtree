@@ -87,9 +87,12 @@ static foreach (_; 1 .. size_t.sizeof - 1)
         {
             auto currentSeed = unpredictableSeed();
             size_t M;
-            auto vT = generateVEBtree!("UT: black box test capacity and universe: ", 1 << _)
-                    (b, currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
-            assert(vT.universe == M);
+            auto vT = generateVEBtree!(1 << _)
+                    (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
+            const errorString = 
+                generateDebugString("UT: black box test capacity and universe: ", b, 1 << _, currentSeed, M); 
+            
+            assert(vT.universe == M, errorString);
             assert(vT.capacity == (vT.universe - 1).nextPow2,
                     to!string("vT.capacity: " ~ to!string(
                         vT.capacity) ~ " vT.universe: " ~ to!string(vT.universe)));
@@ -346,9 +349,10 @@ static foreach (_; 1 .. size_t.sizeof - 1)
         {
             auto currentSeed = unpredictableSeed();
             size_t M;
-            auto vT = generateVEBtree!("UT: black box test outer interface: ", 1 << _)(b, currentSeed,
-                    CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof,
-                    M);
+            auto vT = generateVEBtree!(1 << _)
+                (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
+            const errorString = 
+                generateDebugString("UT: black box test outer interface: ", b, 1 << _, currentSeed, M); 
             size_t N = uniform(0UL, 2 * M); // independent parameter for testing
 
             // make an array of length N
@@ -357,54 +361,31 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             cacheArray.reserve(N);
             // fill the array with all possible values 
             foreach (ref el; testArray)
-            {
                 el = (2 * M).iota.choice;
-            }
 
             auto rbt = redBlackTree!size_t();
 
             foreach (val; testArray)
             {
-                assert(vT.universe == M);
-                assert(vT.length == rbt.length);
+                assert(vT.universe == M, errorString);
+                assert(vT.length == rbt.length, errorString);
 
                 bool insertExpectation;
                 if (val < vT.capacity && !(val in vT))
                 {
                     insertExpectation = true;
                 }
-
-                /*
-                if(debugFunction == "insert")
-                {
-                    trace("val: ", val);
-                }
-                */
-
                 const insertResult = vT.insert(val);
 
-                assert(insertResult == insertExpectation);
+                assert(insertResult == insertExpectation, errorString);
 
                 if (insertResult)
                 {
 
-                    assert(val in vT);
-                    assert(!vT.empty);
+                    assert(val in vT, errorString);
+                    assert(!vT.empty, errorString);
                     rbt.insert(val);
-
-                    /*
-                    if(debugNumbers.canFind(val) && debugFunction == "insert")
-                    {
-                        trace("val: ", val, 
-                            " vT.min: ", vT.min, 
-                            " vT.max: ", vT.max, 
-                            " rbt.front: ", rbt.front, 
-                            " rbt.back: ", rbt.back
-                        );
-                    }
-                    */
-
-                    assert(vT.min == rbt.front);
+                    assert(vT.min == rbt.front, errorString);
                     assert(vT.max == rbt.back,
                             "val:" ~ to!string(val) ~ " vT.max: " ~ to!string(
                                 vT.max) ~ " rbt.back: " ~ to!string(rbt.back));
@@ -415,98 +396,69 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                 {
                     if (!(val in rbt))
                     {
-                        assert(!(val in vT));
+                        assert(!(val in vT), errorString);
                     }
                     else
                     {
-                        assert(val in vT);
+                        assert(val in vT, errorString);
                     }
                 }
             }
+
             import std.algorithm.sorting : sort; 
             cacheArray.sort;
 
             foreach (i, el; cacheArray)
             {
-                assert(el in vT);
+                assert(el in vT, errorString);
                 if (i + 1 != cacheArray.length)
                 {
-                    assert(vT.next(el) == cacheArray[i + 1]);
+                    assert(vT.next(el) == cacheArray[i + 1],errorString);
                 }
                 else
                 {
-                    assert(vT.next(el) == NIL);
+                    assert(vT.next(el) == NIL, errorString);
                 }
             }
+
+            foreach (i, el; vT)
+                assert(el == cacheArray[i], errorString);
+            
+            assert(vT == cacheArray, errorString); 
 
             import std.range : retro, enumerate; 
             foreach (i, el; cacheArray.retro.enumerate)
             {
-                assert(el in vT);
+                assert(el in vT, errorString);
                 if (i + 1 != cacheArray.length)
                 {
-                    assert(vT.prev(el) == cacheArray[($ - 1) - (i + 1)]);
+                    assert(vT.prev(el) == cacheArray[($ - 1) - (i + 1)], errorString);
                 }
                 else
                 {
-                    assert(vT.prev(el) == NIL);
+                    assert(vT.prev(el) == NIL, errorString);
                 }
             }
 
             foreach (val; testArray)
             {
-                assert(vT.length == rbt.length);
-
-                /*
-                if(debugFunction == "remove")
-                {
-                    trace("val: ", val);
-                }
-                */
-
-                /*
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("val: ", val, 
-                        " vT.min: ", vT.min, 
-                        " vT.max: ", vT.max, 
-                        " rbt.front: ", rbt.front, 
-                        " rbt.back: ", rbt.back
-                    );
-                }
-                */
+                assert(vT.length == rbt.length, errorString);
                 if (val in rbt)
                 {
-                    assert(val in vT);
-
-                    /*
-                    if(debugNumbers.canFind(val) && debugFunction == "remove")
-                    {
-                        trace("... existing");
-                    }
-                    */
-
+                    assert(val in vT, errorString);
                     rbt.removeKey(val);
-                    assert(vT.remove(val));
+                    assert(vT.remove(val), errorString);
                 }
                 else
                 {
-                    assert(!(val in vT));
-
-                    /*
-                    if(debugNumbers.canFind(val) && debugFunction == "remove")
-                    {
-                        trace("... non-existing");
-                    }
-                    */
-
-                    assert(!vT.remove(val));
+                    assert(!(val in vT), errorString);
+                    assert(!vT.remove(val), errorString);
                 }
-                assert(!(val in rbt));
-                assert(!(val in vT));
+                assert(!(val in rbt), errorString);
+                assert(!(val in vT), errorString);
             }
-            assert(vT.length == 0);
-            assert(rbt.length == 0);
+            assert(vT.length == 0, errorString);
+            assert(rbt.length == 0, errorString);
         }
     }
 }
