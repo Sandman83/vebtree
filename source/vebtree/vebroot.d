@@ -1,4 +1,4 @@
-module vebtree.root; 
+module vebtree.vebroot; 
 import vebtree; 
 import std.bitmanip : taggedPointer; 
 public import core.bitop;
@@ -37,11 +37,9 @@ version(unittest)
 {
     import std.random; 
     import std.format; 
-    import std.datetime.stopwatch; 
     import std.conv : to;
     import std.container; // red black tree may be used in unittests for comparison.
     import std.math : sqrt; 
-    public import std.parallelism : parallel; 
     public import std.random; 
     
     //size_t[] debugNumbers;
@@ -272,6 +270,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
+        import std.parallelism : parallel; 
         enum baseSize = 1 << _; 
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {

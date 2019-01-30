@@ -6,26 +6,16 @@ Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gm
 
 /**
 This module implements a Van Emde Boas tree container.
-The module is still a work in progress. So, if you find an error by chance, please let me know in any way.
+All corrections, bug findings pull requests and comments are welcome. 
 The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size,
-given an arbitrary size at the initialization. The tree can be used in two different modes: 
-1. Tree contains keys only. Supported operations are 
-inserting, deletion, membership testing, neighborhood searching. All queries are of order (lglg U), where U is the 
-capacity of the tree, set on initialization. 
-2. Tree contains keys and values. Additionally to the above operations the indexing operation is supported. It 
-yields the pointer to a stored object, if the key is contained in the tree, otherwise null. 
-For optimization purposes, the size limit is halfSizeT.max + 1. The tree was tested on 64- and 32-bit arch. 
-So the largest element which can be stored is 4.294.967.295 on a 64-bit architecture. 
+given an arbitrary size at the initialization. 
 */
-
-// (optional) todo: provide functionality to contain non-unique keys, i. e. exercise 20.3.1 from Cormen
 
 /**
 The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard
-operations of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree. For
-small amount of elements the overhead coming along with the structure take over. For example, for a universe size of
-2^14 and 15872 insertion operatios the duration for the Van Emde Boas tree is about 1*10^(-3) times smaller. As one
-of the unittests shows. 
+operations of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree, constant 
+after creation. For small amount of elements the overhead coming along with the structure take over. However, if the 
+universe size becomes bigger, the tree performance becomes better.
 */
 
 /**
@@ -38,18 +28,9 @@ non-negative values can be used are infered from the term "key".
 /**
 See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
 Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
-*/
-
-/**
-As an important optimization a bottom out technique is used to compactify the tree to the level of nodes, where bit
-operations become possible. As a side effect, the optimization now relies on the underlying architecture. This leads
-to the fact, that the maximum of elements which can be stored is 
-2^16 on a 32-bit architecture and 
-2^32 on a 64-bit architecture. 
-This was intentionally chosen for two reasons: 
-i$(RPAREN) to keep the size of a single node also depending from the underlying architecture. 
-ii$(RPAREN) for bitoperations, which the tree is relying on, to use the native word size of the architecture without
-emulating bigger entities. 
+further helpful source was the C++ implementation found here, 
+http://www.keithschwarz.com/interesting/code/van-emde-boas-tree/
+where the idea of bit operations is taken from. 
 */
 
 module vebtree; 
@@ -73,9 +54,7 @@ debug
         }
     }
 }
-import vebtree.root; 
-import std.typecons : Flag, Yes, No; 
-import std.experimental.logger; 
+import vebtree.vebroot; 
 
 auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 {
@@ -86,11 +65,6 @@ auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 As a usual container, van Emde Boas tree provides the notion of capacity
 */
 size_t capacity(T)(const ref T root) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.isLeaf) return root.capacityImpl; 
     return (root.universe_ - 1).nextPow2;    
@@ -100,20 +74,16 @@ do
 The universe used for initializing is stored within the van Emde Boas tree. 
 */
 size_t universe(T)(ref T root) @nogc
-out
 {
-    assert(root.universe_ >= 2); 
-}
-do
-{
-    //if(root.isLeaf) return root.universeImpl;
     return root.universe_; 
 }
+
 ///
 static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
+        import std.parallelism : parallel; 
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -132,11 +102,6 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 The predecessor search method of the van Emde Boas tree. 
 */
 size_t prev(T)(ref T root, size_t val) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.prevImpl(val); 
@@ -180,11 +145,6 @@ do
 The successor search method of the van Emde Boas tree. 
 */
 size_t next(T)(const ref T root, size_t val) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.nextImpl(val); 
@@ -225,11 +185,6 @@ do
 The maximal contained key in the van Emde Boas tree
 */
 size_t max(T)(const ref T root) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.maxImpl; 
@@ -239,11 +194,6 @@ do
 The minimal contained key in the van Emde Boas tree
 */
 size_t min(T)(const ref T root) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.empty) { return NIL; } 
     if(root.isLeaf) return root.minImpl; 
@@ -253,11 +203,6 @@ do
 The insertion method of the van Emde Boas tree. 
 */
 bool insert(T)(ref T root, size_t val)
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     debug
     {
@@ -550,11 +495,6 @@ do
 remove method of the van Emde Boas tree
 */
 bool remove(T)(ref T root, size_t val)
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     debug{}
 
@@ -754,6 +694,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     unittest
     {
         import std.conv : to; 
+        import std.parallelism : parallel; 
         foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -925,33 +866,24 @@ static foreach(_; 1 .. size_t.sizeof - 1)
         }
     }
 }
+
 private: 
 ref summary(T)(inout ref T root)
 in
 {
     assert(!root.isLeaf);
 }
-out
-{
-    assert(root.universe_ >= 2); 
-}
 do
 {
     return root.arr[root.capacity.hSR];
 }
 auto cluster(T)(inout ref T root) 
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     return root.arr[0 .. root.capacity.hSR]; 
 }
 auto arr(T)(inout ref T root)
-out
+in
 {
-    assert(root.universe_ >= 2); 
     assert(!root.isLeaf);
 }
 do
@@ -959,13 +891,7 @@ do
     return root.ptr[0 .. root.capacity.hSR + 1];
 }
 bool min(T)(ref T root, size_t val)
-out
 {
-    assert(root.universe_ >= 2); 
-}
-do
-{
-    //if(root.min <= val){ return false; }
     if(root.isLeaf) return root.minImpl(val); 
     root.value_ = root.value_ & higherMask;
     root.value_ = root.value_ | val;
@@ -973,39 +899,24 @@ do
 }
 
 bool max(T)(ref T root, size_t val)
-out
 {
-    assert(root.universe_ >= 2); 
-}
-do
-{
-    //if(root.max >= val) { return false; }
     if(root.isLeaf) return root.maxImpl(val); 
     root.value_ = root.value_ & lowerMask; 
     root.value_ = root.value_ | (val << (CHAR_BIT * size_t.sizeof/2));
     return true;
 }
+
 /**
 insert method. this method is called from class with a universe size given. It performs recursion calls untill
 the universe size is reduced to the base size. Then the overloaded insert method is called. 
 */
 bool empty(T)(ref T root) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     if(root.isLeaf) return root.emptyImpl; 
     return true; 
 }
 
 void empty(T)(ref T root, bool _) @nogc
-out
-{
-    assert(root.universe_ >= 2); 
-}
-do
 {
     root.emptyImpl(_); 
 }
