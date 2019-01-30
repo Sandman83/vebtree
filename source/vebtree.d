@@ -82,13 +82,13 @@ version (unittest)
     static assert(!is(typeof(vebRoot(4)[2])));
     */
 
-    auto generateVEBtree(size_t baseSize)(uint currentSeed, size_t min, size_t max, ref size_t M)
+    auto generateVEBtree(size_t baseSize)(uint currentSeed, size_t front, size_t back, ref size_t M)
     {
         static assert(baseSize > 1);
         static assert((baseSize & (baseSize - 1)) == 0);
-        assert(min >= 2);
+        assert(front >= 2);
         rndGen.seed(currentSeed); //initialize the random generator
-        M = uniform(min, max + 1); // parameter for construction
+        M = uniform(front, back + 1); // parameter for construction
         return vebRoot!baseSize(M);
     }
     string generateDebugString(string identifier1, size_t identifier2, size_t baseSize, uint currentSeed, size_t M)
@@ -99,7 +99,7 @@ version (unittest)
 
 // bit mask representing uint.max. 
 enum size_t lowerMask = size_t.max >> (size_t.sizeof * CHAR_BIT / 2);
-// bit mask representing size_t.max without uint.max. 
+// bit mask representing size_t.back without uint.max. 
 enum size_t higherMask = size_t.max ^ lowerMask;
 
 /*
@@ -225,7 +225,7 @@ auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
     }
     else
     {
-        auto retVal = VEBtree!(inclusive, root)(root.min, root.max, root.length);
+        auto retVal = VEBtree!(inclusive, root)(root.front, root.back, root.length);
     }
 
     return retVal;
@@ -258,8 +258,8 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             }
 
             assert(vT.empty == true, errorString);
-            assert(vT.min == NIL, errorString);
-            assert(vT.max == NIL, errorString);
+            assert(vT.front == NIL, errorString);
+            assert(vT.back == NIL, errorString);
             assert(vT[].front == 0, errorString);
             assert(vT[].back == vT.universe, errorString);
             assert(vT().front == NIL, errorString);
@@ -314,22 +314,22 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             assert(vT.universe == M, errorString);
             if (cacheArray.length)
             {
-                assert(vT.min == cacheArray.front, errorString);
-                assert(vT.max == cacheArray.back, errorString);
+                assert(vT.front == cacheArray.front, errorString);
+                assert(vT.back == cacheArray.back, errorString);
             }
             else
             {
-                assert(vT.min == NIL, errorString);
-                assert(vT.max == NIL, errorString);
+                assert(vT.front == NIL, errorString);
+                assert(vT.back == NIL, errorString);
             }
 
-            auto currElement = vT.min;
+            auto currElement = vT.front;
             foreach (el; cacheArray.uniq)
             {
                 assert(currElement == el, errorString);
                 currElement = vT.next(currElement);
             }
-            currElement = vT.max;
+            currElement = vT.back;
             foreach (el; cacheArray.uniq.array.retro)
             {
                 assert(currElement == el, errorString);
@@ -353,8 +353,8 @@ static foreach (_; 1 .. size_t.sizeof - 1)
 
             assert(deepCopy.value_ == vT.value_, errorString);
             assert(vT == cacheArray.uniq, errorString);
-            assert(vT.prev(vT.min) == NIL, errorString);
-            assert(vT.next(vT.max) == NIL, errorString);
+            assert(vT.prev(vT.front) == NIL, errorString);
+            assert(vT.next(vT.back) == NIL, errorString);
             assert(vT == deepCopy, errorString);
             assert(vT == deepCopy(), errorString);
 
@@ -463,10 +463,10 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                     assert(val in vT, errorString);
                     assert(!vT.empty, errorString);
                     rbt.insert(val);
-                    assert(vT.min == rbt.front, errorString);
-                    assert(vT.max == rbt.back,
-                            "val:" ~ to!string(val) ~ " vT.max: " ~ to!string(
-                                vT.max) ~ " rbt.back: " ~ to!string(rbt.back));
+                    assert(vT.front == rbt.front, errorString);
+                    assert(vT.back == rbt.back,
+                            "val:" ~ to!string(val) ~ " vT.back: " ~ to!string(
+                                vT.back) ~ " rbt.back: " ~ to!string(rbt.back));
 
                     cacheArray ~= val;
                 }
@@ -543,12 +543,12 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                     assert(el == vT.universe || el == vT.capacity);
                     if(el == vT.universe)
                     {
-                        assert(vT.max <= vT.universe || vT.max == NIL, errorString ~ format!" length: %d"(vT.length)); 
+                        assert(vT.back <= vT.universe || vT.back == NIL, errorString ~ format!" length: %d"(vT.length)); 
                     }
                     else
                     {
-                        assert(vT.max > vT.universe, errorString); 
-                        assert(vT.max < vT.capacity, errorString); 
+                        assert(vT.back > vT.universe, errorString); 
+                        assert(vT.back < vT.capacity, errorString); 
                     }
                 }
                 else
@@ -662,7 +662,7 @@ struct VEBroot(size_t baseSize)
             if (length != input.length)
                 return false;
 
-        size_t currentElem = this.min;
+        size_t currentElem = this.front;
 
         foreach (el; input)
         {
@@ -691,7 +691,7 @@ struct VEBroot(size_t baseSize)
         else
         {
             // case of a single valued range. 
-            if (key == this.min || key == this.max)
+            if (key == this.front || key == this.back)
                 return true;
 
             /*
@@ -807,7 +807,7 @@ struct VEBroot(size_t baseSize)
     /**
     The minimal contained key in the van Emde Boas tree
     */
-    size_t min() @nogc const
+    size_t front() @nogc const
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -819,7 +819,7 @@ struct VEBroot(size_t baseSize)
     /**
     The maximal contained key in the van Emde Boas tree
     */
-    size_t max() @nogc const
+    size_t back() @nogc const
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -847,55 +847,55 @@ struct VEBroot(size_t baseSize)
             return false;
         if (isLeaf) // pass control to the node
             return length(length - (btr(&value_, val) != 0));
-        if (min == max) // if the current node contains only a single value
+        if (front == back) // if the current node contains only a single value
         {
             assert(length == 1);
-            if (min != val)
+            if (front != val)
                 return false; // do nothing if the given value is not the stored one 
             assert(length == 1);
             return length(length - 1);
         }
 
-        if (val == min) // if we met the minimum of a node 
+        if (val == front) // if we met the minimum of a node 
         {
-            auto treeOffset = summary.min; // calculate an offset from the summary to continue with        
+            auto treeOffset = summary.front; // calculate an offset from the summary to continue with        
             if (treeOffset == NIL) // if the offset is invalid, then there is no further hierarchy and we are going to 
             {
-                min = max; // store a single value in this node. 
+                front = back; // store a single value in this node. 
                 assert(length == 2);
                 return length(length - 1);
             }
-            auto m = cluster[treeOffset].min; // otherwise we get the minimum from the offset child
+            auto m = cluster[treeOffset].front; // otherwise we get the minimum from the offset child
             // remove it from the child 
             cluster[treeOffset].remove(m);
             if (cluster[treeOffset].empty)
                 summary.remove(treeOffset);
-            //anyway, the new min of the current node become the restored value of the calculated offset. 
-            min = index(treeOffset, m);
+            //anyway, the new front of the current node become the restored value of the calculated offset. 
+            front = index(treeOffset, m);
             assert(length);
             return length(length - 1);
         }
         
-        if (val == max) // if we met the maximum of a node 
+        if (val == back) // if we met the maximum of a node 
         {
             // calculate an offset from the summary to contiue with 
-            auto treeOffset = summary.max;
+            auto treeOffset = summary.back;
             // if the offset is invalid, then there is no further hierarchy and we are going to 
             if (treeOffset == NIL)
             {
                 // store a single value in this node. 
-                max = min;
+                back = front;
                 assert(length == 2);
                 return length(length - 1);
             }
             // otherwise we get maximum from the offset child 
-            auto m = cluster[treeOffset].max;
+            auto m = cluster[treeOffset].back;
             // remove it from the child 
             cluster[treeOffset].remove(m);
             if (cluster[treeOffset].empty)
                 summary.remove(treeOffset);
-            // anyway, the new max of the current node become the restored value of the calculated offset. 
-            max = index(treeOffset, m);
+            // anyway, the new back of the current node become the restored value of the calculated offset. 
+            back = index(treeOffset, m);
             assert(length);
             return length(length - 1);
         }
@@ -928,17 +928,17 @@ struct VEBroot(size_t baseSize)
 
             return NIL;
         }
-        // if given value is less then the min, return the min as successor
-        if (val < min)
-            return min;
-        // if given value is greater then the max, no predecessor exists
-        if (val >= max)
+        // if given value is less then the front, return the front as successor
+        if (val < front)
+            return front;
+        // if given value is greater then the back, no predecessor exists
+        if (val >= back)
             return NIL;
         // if none of the break conditions was met, we have to descent further into the tree. 
         // calculate the child index by high(value, uS)
         const childIndex = high(val);
         // look into the child for its maximum
-        const maxlow = cluster[childIndex].max;
+        const maxlow = cluster[childIndex].back;
         // if the maximum exists and the lowered given value is less then the child's maximum 
         if ((maxlow != NIL) && (low(val) < maxlow))
         {
@@ -951,12 +951,12 @@ struct VEBroot(size_t baseSize)
             auto succcluster = summary.next(childIndex);
             // if the successor cluster is null
             if (succcluster == NIL)
-                return max;
+                return back;
             assert(succcluster != NIL);
-            assert(cluster[succcluster].min != NIL);
+            assert(cluster[succcluster].front != NIL);
             // if the successor cluster exists, the offset is given by its minimum
             // and the result by the reconstruction of the offset. 
-            return index(succcluster, cluster[succcluster].min);
+            return index(succcluster, cluster[succcluster].front);
         }
     }
 
@@ -982,15 +982,15 @@ struct VEBroot(size_t baseSize)
             }
             return NIL;   
         }
-        // if given value is greater then the stored max, the predecessor is max
-        if (val > max)
-            return max;
-        // if given value is less then the min, no predecessor exists. 
-        if (val <= min)
+        // if given value is greater then the stored back, the predecessor is back
+        if (val > back)
+            return back;
+        // if given value is less then the front, no predecessor exists. 
+        if (val <= front)
             return NIL;
         // if none of the break conditions was met we have to descend further into the tree. 
         auto childIndex = high(val); // calculate the child index by high(value, uS)
-        const minlow = cluster[childIndex].min; // look into the child for its minimum
+        const minlow = cluster[childIndex].front; // look into the child for its minimum
         // if the minimum exists and the lowered given value is greater then the child's minimum
         if ((minlow != NIL) && (low(val) > minlow))
         {
@@ -1001,12 +1001,12 @@ struct VEBroot(size_t baseSize)
         else // otherwise we can not use the minimum of the child 
         {
             auto predcluster = summary.prev(childIndex);
-            // if the predecessor cluster is null return the current min, as this is the last remaining value 
+            // if the predecessor cluster is null return the current front, as this is the last remaining value 
             if (predcluster == NIL)
-                return min;
+                return front;
             // if the predecessor cluster exists, the offset is given by its maximum
             // and the result by the reconstruction of the offset. 
-            return index(predcluster, cluster[predcluster].max);
+            return index(predcluster, cluster[predcluster].back);
         }
     }
 
@@ -1022,28 +1022,28 @@ struct VEBroot(size_t baseSize)
         if (empty) // if the current node does not contain anything put the value inside. 
         {
             assert(empty);
-            min = val;
-            max = val;
-            assert(min == val);
+            front = val;
+            back = val;
+            assert(front == val);
             assert(!empty);
-            assert(min == max);
+            assert(front == back);
             assert(!empty);
             return length(length + 1);
         }
 
         assert(!empty);
-        assert(min != NIL);
-        assert(max != NIL);
+        assert(front != NIL);
+        assert(back != NIL);
 
-        if (val == min || val == max) // if the value coincides with existing values, return 
+        if (val == front || val == back) // if the value coincides with existing values, return 
             return false;
         // if the node contains a single value only, expand the node to a range and leave. 
-        if (min == max)
+        if (front == back)
         {
-            if (min > val)
-                min = val;
-            if (max < val)
-                max = val;
+            if (front > val)
+                front = val;
+            if (back < val)
+                back = val;
             return length(length + 1);
         }
         /*
@@ -1051,22 +1051,22 @@ struct VEBroot(size_t baseSize)
             with the values present and adapt the range limits. This replaces the value we want to insert. 
         */
 
-        // a swap can not be used here, as min is itself a (property) method 
-        if (val < min)
+        // a swap can not be used here, as front is itself a (property) method 
+        if (val < front)
         {
             const tmpKey = val;
-            val = min;
-            min = tmpKey;
-            assert(min == tmpKey);
+            val = front;
+            front = tmpKey;
+            assert(front == tmpKey);
         }
 
-        // a swap can not be used here, as max is itself a (property) method 
-        if (val > max)
+        // a swap can not be used here, as back is itself a (property) method 
+        if (val > back)
         {
             const tmpKey = val;
-            val = max;
-            max = tmpKey;
-            assert(max == tmpKey);
+            val = back;
+            back = tmpKey;
+            assert(back == tmpKey);
         }
 
         // calculate the index of the children cluster by high(value, uS) we want to descent to. 
@@ -1084,7 +1084,7 @@ struct VEBroot(size_t baseSize)
         return universe_;
     }
     private:
-    bool min(size_t val)
+    bool front(size_t val)
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -1094,7 +1094,7 @@ struct VEBroot(size_t baseSize)
         return retVal; // this is a bug!
     }
 
-    bool max(size_t val)
+    bool back(size_t val)
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -1145,7 +1145,7 @@ struct VEBroot(size_t baseSize)
     {
         universe_ = val; 
     }
-    
+
     size_t value_;
     size_t universe_;
     size_t length_;
@@ -1173,9 +1173,9 @@ struct VEBroot(size_t baseSize)
     int opApplyImpl(O)(O operations) const
     {
         int result;
-        size_t leading = this.min;
+        size_t leading = this.front;
 
-        //for(size_t leading = min; leading < max; leading = this.next(leading)) 
+        //for(size_t leading = front; leading < back; leading = this.next(leading)) 
 
         for (size_t i = 0; i < length; ++i)
         {
@@ -1200,7 +1200,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
 {
     @disable this(); 
 
-    this(ptrdiff_t min, ptrdiff_t max, size_t _length)
+    this(ptrdiff_t front, ptrdiff_t back, size_t _length)
     {
         length = _length; 
 
@@ -1213,17 +1213,17 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
             }
             else
             {
-                if(min > 0)
+                if(front > 0)
                 {
                     ++length;
                 }
 
-                if(max <= root.universe)
+                if(back <= root.universe)
                 {
                     backKey = root.universe; 
                     ++length; 
                 }
-                else if(max <= root.capacity)
+                else if(back <= root.capacity)
                 {
                     backKey = root.capacity; 
                     ++length; 
@@ -1232,7 +1232,7 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
                 {
                     debug
                     {
-                        assert(max == root.universe || max == -1, format!"max: %d\n"(max));
+                        assert(back == root.universe || back == -1, format!"back: %d\n"(back));
                     }
                     else
                     {
@@ -1243,8 +1243,8 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
         }
         else
         {
-            frontKey = min;
-            backKey = max;
+            frontKey = front;
+            backKey = back;
         }
     }
     auto opBinaryRight(string op)(size_t key) @nogc if (op == "in")
