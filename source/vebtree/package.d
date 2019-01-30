@@ -52,27 +52,35 @@ ii$(RPAREN) for bitoperations, which the tree is relying on, to use the native w
 emulating bigger entities. 
 */
 
-//extern(C) __gshared string[] rt_options = [ "gcopt=gc:precise" ];
-//gc:conservative|precise|manual
-//"--DRT-gcopt=profile:1 minPoolSize:16"
-
 module vebtree; 
 debug 
 {
-    version(DigitalMars)
+    //version = bug; 
+    version(bug)
     {
         import std.experimental.logger; 
     }
-    version(LDC)
+    else
     {
-        import std.stdio; 
-        alias trace = writeln; 
+        version(DigitalMars)
+        {
+            import std.experimental.logger; 
+        }
+        version(LDC)
+        {
+            import std.stdio; 
+            alias trace = writeln; 
+        }
     }
 }
-public import vebtree.root; 
+import vebtree.root; 
 import std.typecons : Flag, Yes, No; 
 import std.experimental.logger; 
 
+auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
+{
+    return VEBroot!baseSize(universe); 
+}
 
 /**
 As a usual container, van Emde Boas tree provides the notion of capacity
@@ -106,12 +114,12 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 {
     unittest
     {
-        foreach(b; (defaultBaseSize * testMultiplier).iota.parallel)
+        foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
             auto vT = generateVEBtree!("UT: black box test capacity and universe_: ", 1 << _)
-                    (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
+                    (b, currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
             assert(vT.universe_ == M); 
             import std.conv : to; 
             assert(vT.capacity == (vT.universe_ - 1).nextPow2,
@@ -225,7 +233,7 @@ do
 {
     if(root.empty) { return NIL; }
     if(root.isLeaf) return root.maxImpl; 
-    return (root.value_ & higherMask) >> (defaultBaseSize/2);
+    return (root.value_ & higherMask) >> (CHAR_BIT * size_t.sizeof/2);
 }
 /**
 The minimal contained key in the van Emde Boas tree
@@ -254,14 +262,18 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("inserting ", val, " #1");
-            //trace("root.low(val): ", root.low(val)); 
-            trace("root.capacity: ", root.capacity); 
-            trace("root.arr.length: ", root.arr.length); 
-            trace("root.universe_: ", root.universe_); 
-            trace("root.cluster.length: ", root.cluster.length);
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("inserting ", val, " #1");
+                //trace("root.low(val): ", root.low(val)); 
+                trace("root.capacity: ", root.capacity); 
+                trace("root.arr.length: ", root.arr.length); 
+                trace("root.universe_: ", root.universe_); 
+                trace("root.cluster.length: ", root.cluster.length);
+            }
+            */
         }
     }
     
@@ -270,9 +282,13 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("inserting ", val, " #2");
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("inserting ", val, " #2");
+            } 
+            */   
         }
     }
 
@@ -281,9 +297,13 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("inserting ", val, " #3");
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("inserting ", val, " #3");
+            } 
+            */   
         }
     }
 
@@ -292,21 +312,30 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("inserting ", val, " #4");
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("inserting ", val, " #4");
+                }
+                */
             }
         }
         assert(root.empty);
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.min #1: ", root.min); 
-                trace("root.max #1: ", root.max); 
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.min #1: ", root.min); 
+                    trace("root.max #1: ", root.max); 
+                }
+                */
             }
         }
+
         empty(root, false); 
 
         min(root, val);
@@ -314,10 +343,14 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.min #2: ", root.min); 
-                trace("root.max #2: ", root.max); 
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.min #2: ", root.min); 
+                    trace("root.max #2: ", root.max); 
+                }
+                */
             }
         }
 
@@ -329,10 +362,14 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.min #3: ", root.min); 
-                trace("root.max #3: ", root.max); 
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.min #3: ", root.min); 
+                    trace("root.max #3: ", root.max); 
+                }
+                */
             }
         }
         
@@ -342,11 +379,15 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.min #4: ", root.min); 
-                trace("root.max #4: ", root.max); 
-            }
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.min #4: ", root.min); 
+                    trace("root.max #4: ", root.max); 
+                }
+                */
+            }            
         }
         assert(!root.empty); 
         return root.length = root.length + 1; 
@@ -381,23 +422,13 @@ do
     // a swap can not be used here, as min is itself a (property) method 
 
     debug
-    {
-        version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
-        {
-            //trace("kuku #1");
-        }    
+    { 
     }
 
     if(val < root.min)
     {
         debug
         {
-            version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
-            {
-                //trace("kuku #2");
-            }    
         }
         const tmpKey = val; val = root.min; min(root, tmpKey);
         
@@ -408,10 +439,15 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.max: ", root.max);
-            }    
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.max: ", root.max);
+                }
+                */
+            }
+            
         }
         
         const tmpKey = val; val = root.max; max(root, tmpKey);
@@ -419,10 +455,15 @@ do
         debug
         {
             version(unittest)
-            if(debugNumbers.canFind(val) && debugFunction == "insert")
             {
-                trace("root.max: ", root.max);
-            }    
+                /*
+                if(debugNumbers.canFind(val) && debugFunction == "insert")
+                {
+                    trace("root.max: ", root.max);
+                }
+                */
+            }
+            
         }
 
         assert(root.max == tmpKey); 
@@ -432,10 +473,14 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("val is currently: ", val);
-        }    
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("val is currently: ", val);
+            }
+            */
+        }
     }
     // calculate the index of the children cluster by high(value, uS) we want to descent to. 
     auto nextTreeIndex = root.high(val); 
@@ -443,19 +488,23 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("val: ", val);
-            trace("root.universe_: ", root.universe_); 
-            trace("(root.universe_ - 1).nextPow2: ", (root.universe_ - 1).nextPow2); 
-            trace("(root.universe_ - 1).nextPow2.hSR: ", (root.universe_ - 1).nextPow2.hSR); 
-            trace("root.high(val): ", root.high(val));
-            trace("(val >> (bsr(root.universe_) / 2)): ", (val >> (bsr(root.universe_) / 2))); 
-            trace("val / root.universe_.lSR: ", val / root.universe_.lSR); 
-            trace("val / (root.universe_ - 1).nextPow2.lSR: ", val / (root.universe_ - 1).nextPow2.lSR); 
-            trace("cluster.length: ", root.cluster.length);
-            trace("cluster should be: ", (root.universe_ - 1).nextPow2.hSR);
-            trace("nextTreeIndex: ", nextTreeIndex);
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("val: ", val);
+                trace("root.universe_: ", root.universe_); 
+                trace("(root.universe_ - 1).nextPow2: ", (root.universe_ - 1).nextPow2); 
+                trace("(root.universe_ - 1).nextPow2.hSR: ", (root.universe_ - 1).nextPow2.hSR); 
+                trace("root.high(val): ", root.high(val));
+                trace("(val >> (bsr(root.universe_) / 2)): ", (val >> (bsr(root.universe_) / 2))); 
+                trace("val / root.universe_.lSR: ", val / root.universe_.lSR); 
+                trace("val / (root.universe_ - 1).nextPow2.lSR: ", val / (root.universe_ - 1).nextPow2.lSR); 
+                trace("cluster.length: ", root.cluster.length);
+                trace("cluster should be: ", (root.universe_ - 1).nextPow2.hSR);
+                trace("nextTreeIndex: ", nextTreeIndex);
+            }
+            */
         }    
     }
 
@@ -467,11 +516,15 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("root.low(val): ", root.low(val)); 
-            trace("nextTreeIndex: ", nextTreeIndex); 
-            trace("root.cluster.length: ", root.cluster.length);
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("root.low(val): ", root.low(val)); 
+                trace("nextTreeIndex: ", nextTreeIndex); 
+                trace("root.cluster.length: ", root.cluster.length);
+            }
+            */
         }
     }
 
@@ -480,10 +533,14 @@ do
     debug
     {
         version(unittest)
-        if(debugNumbers.canFind(val) && debugFunction == "insert")
         {
-            trace("res: ", res);
-        }    
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "insert")
+            {
+                trace("res: ", res);
+            }
+            */
+        }
     }
 
     return root.length = root.length + res; 
@@ -499,345 +556,168 @@ out
 }
 do
 {
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #1");
-        }
-    }
+    debug{}
+
     if(val >= root.capacity) return false; 
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #2");
-        }
-    }
+    
+    
+    debug{}
+
     if(root.empty) return false; 
+    
     debug
     {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #3");
-        }
     }
+
     if(root.isLeaf) return root.removeImpl(val); 
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #4");
-        }
-    }
+    
+    debug{}
+
     if(root.min == root.max) // if the current node contains only a single value
     {
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #5");
-            }
-        }
+        debug{}
 
         assert(root.length == 1);
 
         if(root.min != val) return false; // do nothing if the given value is not the stored one 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #6");
-            }
-        }
+        debug{}
 
         empty(root, true);
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #7");
-            }
-        }
+        debug{}
+
         assert(root.length); 
         return (root.length = root.length - 1); 
     }
 
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #8");
-        }
-    }
+    debug{}
 
     if(val == root.min) // if we met the minimum of a node 
     {
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #9");
-            }
-        }
+        debug{}
 
         auto treeOffset = root.summary.min; // calculate an offset from the summary to continue with
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #10");
-            }
-        }
+        debug{}
         
         if(treeOffset == NIL) // if the offset is invalid, then there is no further hierarchy and we are going to 
         {
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #11");
-                }
-            }
+            debug{}
             
             min(root, root.max); // store a single value in this node. 
             
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #12");
-                }
-            }
+            debug{}
             
             assert(root.length); 
             return root.length = root.length - 1; 
         }
 
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #13");
-            }
-        }
+        debug{}
         
         auto min = root.cluster[treeOffset].min; // otherwise we get the minimum from the offset child
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #14");
-            }
-        }
+        debug{}
         
         // remove it from the child 
         root.cluster[treeOffset].remove(min); 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #15");
-            }
-        }
+        debug{}
         
         if(root.cluster[treeOffset].empty)
         {
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #16");
-                }
-            }
+            debug{}
             
             root.summary.remove(treeOffset); 
             
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #17");
-                }
-            }
+            debug{}
         }
        
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #18");
-            }
-        }
+        debug{}
         
         //anyway, the new min of the current node become the restored value of the calculated offset. 
         .min(root, root.index(treeOffset, min)); 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #19");
-            }
-        }
+        debug{}
         
         assert(root.length); 
         return root.length = root.length - 1; 
     }
 
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #20");
-        }
-    }
+    debug{}
     
     // if we met the maximum of a node 
     if(val == root.max) 
     {
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #21");
-            }
-        }
+        debug{}
         
         // calculate an offset from the summary to contiue with 
         auto treeOffset = root.summary.max; 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #22");
-            }
-        }
+        debug{}
         
         // if the offset is invalid, then there is no further hierarchy and we are going to 
         if(treeOffset == NIL) 
         {
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #23");
-                }
-            }
+            debug{}
             
             // store a single value in this node. 
             max(root, root.min); 
             
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #24");
-                }
-            }
+            debug{}
             
             assert(root.length); 
             return (root.length = root.length - 1);
         }
 
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #25");
-            }
-        }
+        debug{}
         
         // otherwise we get maximum from the offset child 
         auto max = root.cluster[treeOffset].max; 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #26");
-            }
-        }
+        debug{}
         
         // remove it from the child 
         root.cluster[treeOffset].remove(max); 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #27");
-            }
-        }
+        debug{}
         
         if(root.cluster[treeOffset].empty)
         {
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #28");
-                }
-            }
+            debug{}
             
             root.summary.remove(treeOffset); 
 
-            debug
-            {
-                if(debugNumbers.canFind(val) && debugFunction == "remove")
-                {
-                    trace("kuku #29");
-                }
-            }
+            debug{}
         }
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #31");
-            }
-        }
+        debug{}
         
         // anyway, the new max of the current node become the restored value of the calculated offset. 
         .max(root, root.index(treeOffset, max)); 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #32");
-            }
-        }
+        debug{}
         
         assert(root.length); 
         return root.length = root.length - 1; 
     }
 
-    debug
-    {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
-        {
-            trace("kuku #33");
-        }
-    }
+    debug{}
     
     // if no condition was met we have to descend deeper. We get the offset by reducing the value to high(value, uS)
     auto treeOffset = root.high(val); 
     
     debug
     {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
+        version(unittest)
         {
-            trace("kuku #34");
-            trace("root.low(val): ", root.low(val)); 
-            trace("root.high(val): ", root.high(val));
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "remove")
+            {
+                trace("root.low(val): ", root.low(val)); 
+                trace("root.high(val): ", root.high(val));
+            }
+            */
         }
     }
 
@@ -845,32 +725,24 @@ do
     
     debug
     {
-        if(debugNumbers.canFind(val) && debugFunction == "remove")
+        version(unittest)
         {
-            trace("kuku #35");
-            trace("res: ", res); 
+            /*
+            if(debugNumbers.canFind(val) && debugFunction == "remove")
+            {
+                trace("res: ", res); 
+            }
+            */
         }
     }
     
     if(root.cluster[treeOffset].empty)
     {
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #36");
-            }
-        }
+        debug{}
 
         root.summary.remove(treeOffset); 
         
-        debug
-        {
-            if(debugNumbers.canFind(val) && debugFunction == "remove")
-            {
-                trace("kuku #37");
-            }
-        }
+        debug{}
     }
 
     return res;
@@ -882,12 +754,12 @@ static foreach(_; 1 .. size_t.sizeof - 1)
     unittest
     {
         import std.conv : to; 
-        foreach(b; (defaultBaseSize * testMultiplier).iota.parallel)
+        foreach(b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
             size_t M; 
             auto vT = generateVEBtree!("UT: black box test outer interface: ", 1 << _)
-                    (b, currentSeed, defaultBaseSize, defaultBaseSize * defaultBaseSize, M);
+                    (b, currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
             size_t N = uniform(0UL, 2 * M); // independent parameter for testing
             
             // make an array of length N
@@ -900,7 +772,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                 el = (2 * M).iota.choice;
             }
             
-            import std.container.rbtree; 
+            import std.container.rbtree : redBlackTree; 
 
             auto rbt = redBlackTree!size_t();
 
@@ -915,10 +787,12 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                     insertExpectation = true; 
                 }
 
+                /*
                 if(debugFunction == "insert")
                 {
                     trace("val: ", val);
                 }
+                */
                 
                 const insertResult = vT.insert(val);
                 
@@ -931,7 +805,8 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                     assert(val in vT); 
                     assert(!vT.empty);
                     rbt.insert(val);
-
+                    
+                    /*
                     if(debugNumbers.canFind(val) && debugFunction == "insert")
                     {
                         trace("val: ", val, 
@@ -941,6 +816,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                             " rbt.back: ", rbt.back
                         );
                     }
+                    */
                     
                     assert(vT.min == rbt.front); 
                     assert(vT.max == rbt.back, 
@@ -996,12 +872,14 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             {
                 assert(vT.length == rbt.length); 
 
+                /*
                 if(debugFunction == "remove")
                 {
                     trace("val: ", val);
                 }
+                */
                 
-
+                /*
                 if(debugNumbers.canFind(val) && debugFunction == "remove")
                 {
                     trace("val: ", val, 
@@ -1011,14 +889,17 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                         " rbt.back: ", rbt.back
                     );
                 }
+                */
                 if(val in rbt)
                 {
                     assert(val in vT); 
-
+                    
+                    /*
                     if(debugNumbers.canFind(val) && debugFunction == "remove")
                     {
                         trace("... existing");
                     }
+                    */
                     
                     rbt.removeKey(val); 
                     assert(vT.remove(val)); 
@@ -1027,10 +908,12 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                 {
                     assert(!(val in vT)); 
                     
+                    /*
                     if(debugNumbers.canFind(val) && debugFunction == "remove")
                     {
                         trace("... non-existing");
                     }
+                    */
                     
                     assert(!vT.remove(val));
                 }
@@ -1039,262 +922,9 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             }
             assert(vT.length == 0);
             assert(rbt.length == 0);
-
-            //////////////////////////////////////////////////////////////////////////////////////////////////////
-            
-            /*
-            cacheArray.sort;
-            
-            if(cacheArray.empty)
-            {
-                assert(vT.empty);
-            }
-            else
-            {
-                assert(!vT.empty);
-            }
-            
-            foreach(el; cacheArray)
-            {
-                assert(bt(&vT.value_, el));
-            }
-            assert(vT.length == cacheArray.uniq.count);
-            assert(vT.universe_ == M);
-            if(cacheArray.length)
-            {
-                assert(vT.min == cacheArray.front); 
-                assert(vT.max == cacheArray.back); 
-            }
-            else
-            {
-                assert(vT.min == NIL);
-                assert(vT.max == NIL);
-            }
-            
-            auto currElement = vT.min; 
-            foreach(el; cacheArray.uniq)
-            {
-                assert(currElement == el); 
-                currElement = vT.next(currElement); 
-            }
-            currElement = vT.max;
-            foreach(el; cacheArray.uniq.array.retro)
-            {
-                assert(currElement == el); 
-                currElement = vT.prev(currElement); 
-            }
-
-            foreach(key; 0 .. vT.universe_)
-            {
-                if(cacheArray.uniq.array.canFind(key))
-                {
-                    assert(key in vT); 
-                }
-                else
-                {
-                    assert(!(key in vT));
-                }
-            }
-            auto deepCopy = vT.dup; 
-
-            assert(deepCopy.value_ == vT.value_);
-            assert(vT == cacheArray.uniq);
-            assert(vT.prev(vT.min) == NIL);
-            assert(vT.next(vT.max) == NIL);
-            assert(vT == deepCopy);
-            assert(vT == deepCopy());
-            
-            if(cacheArray.length)
-            {
-                auto valToRemove = cacheArray.uniq.array.randomCover.front; 
-                vT.removeImpl(valToRemove);
-                assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << valToRemove)); 
-                cacheArray
-                    .count(valToRemove)
-                    .iota
-                    .each!(i => cacheArray = 
-                                cacheArray
-                                    .remove(cacheArray.length - cacheArray.find(valToRemove).length));
-            }
-            else
-            {
-                assert((deepCopy.value_ ^ vT.value_) == 0); 
-            }
-            
-            foreach(key; 0 .. vT.capacity)
-            {
-                if(cacheArray.uniq.array.canFind(key))
-                {
-                    assert(vT.removeImpl(key)); 
-                }
-                else
-                {
-                    assert(!(vT.removeImpl(key)));
-                }
-            }
-            assert(vT.value_ == 0); 
-            assert(vT.empty);
-            */
         }
     }
 }
-
-///
-/+ TODO: 
-static foreach(_; 0 .. baseSize * testMultiplier)
-{
-    /*
-    unittest
-    {
-        auto currentSeed = unpredictableSeed();
-        //currentSeed = 
-        trace("UT: white box test #2: ", _, "; seed: ", currentSeed); 
-
-        rndGen.seed(currentSeed); //initialize the random generator
-        size_t M = uniform(baseSize, 2 * baseSize); // parameter for construction
-        auto vT = vebRoot(M);
-
-        assert(!(vT.ptr is null));
-        assert(vT.empty == true);
-        assert(vT.value_ == 0);
-        assert(vT.min == NIL);
-        assert(vT.max == NIL);
-        assert(vT.length == 0); 
-        if(powersOfTwo.canFind(M))
-        {
-            assert(vT.capacity == M); 
-        }
-        else
-        {
-            assert(vT.capacity == M.nextPow2); 
-        }
-
-        assert(vT[].front == 0);
-        assert(vT[].back == vT.universe_);
-        assert(vT().front == NIL);
-        assert(vT().back == NIL);
-        assert(vT.length == 0);
-        assert(vT.universe_ == M);
-
-        size_t N = uniform(0U, baseSize); // independent parameter for testing
-        auto testArray = (2 * M).iota.randomCover.array; 
-        auto cacheArray = new size_t[N];
-        
-        size_t counter; 
-
-        foreach(val; testArray)
-        {
-            if(counter == N) break; 
-
-            const insertResult = vT.insert(val);
-            
-            if(insertResult)
-            {
-                assert(!vT.empty);
-                cacheArray[counter] = val;
-                ++counter;
-            }
-        }
-        
-        auto originalCacheArray = cacheArray.dup; 
-        cacheArray.sort;
-        
-        assert(vT.ptr is null);
-        assert(vT.empty == !N);
-        foreach(el; cacheArray)
-        {
-            assert(bt(&vT.value_, el));
-        }
-        assert(vT.length == cacheArray.uniq.count);
-        assert(vT.universe_ == M);
-        if(cacheArray.length)
-        {
-            assert(vT.min == cacheArray.front); 
-            assert(vT.max == cacheArray.back); 
-        }
-        else
-        {
-            assert(vT.min == NIL);
-            assert(vT.max == NIL);
-        }
-        
-
-        auto currElement = vT.min; 
-        foreach(el; cacheArray.uniq)
-        {
-            assert(currElement == el); 
-            currElement = vT.next(currElement); 
-        }
-        currElement = vT.max;
-        foreach(el; cacheArray.uniq.array.retro)
-        {
-            assert(currElement == el); 
-            currElement = vT.prev(currElement); 
-        }
-
-        foreach(key; 0 .. vT.universe_)
-        {
-            if(cacheArray.uniq.array.canFind(val))
-            {
-                assert(val in vT); 
-            }
-            else
-            {
-                assert(!(val in vT));
-            }
-        }
-
-        auto deepCopy = vT.dup; 
-        assert(deepCopy.value_ == vT.value_);
-        assert(vT == cacheArray.uniq);
-        assert(vT.prev(vT.min) == NIL);
-        assert(vT.next(vT.max) == NIL);
-        assert(vT == deepCopy);
-        assert(vT == deepCopy());
-         
-
-        if(cacheArray.length)
-        {
-            auto valToRemove = cacheArray.uniq.array.randomCover.front; 
-            vT.remove(valToRemove);
-            assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << valToRemove)); 
-            cacheArray
-                .count(valToRemove)
-                .iota
-                .each!(i => cacheArray = 
-                            cacheArray
-                                .remove(cacheArray.length - cacheArray.find(valToRemove).length));
-        }
-        else
-        {
-            assert((deepCopy.value_ ^ vT.value_) == 0); 
-        }
-        
-        foreach(val; 0 .. vT.capacity)
-        {
-            if(cacheArray.uniq.array.canFind(val))
-            {
-                assert(vT.remove(val)); 
-            }
-            else
-            {
-                assert(!(vT.remove(val)));
-            }
-        }
-        assert(vT.value_ == 0); 
-        assert(vT.empty);
-    }
-    */
-}
-+/
-/*
-package: 
-
-bool isMemberOf(T)(size_t key, const ref T root) @nogc
-{
-    return key in root; 
-}
-*/
 private: 
 ref summary(T)(inout ref T root)
 in
@@ -1307,7 +937,7 @@ out
 }
 do
 {
-    return root.arr[0];
+    return root.arr[root.capacity.hSR];
 }
 auto cluster(T)(inout ref T root) 
 out
@@ -1316,7 +946,7 @@ out
 }
 do
 {
-    return root.arr[1 .. $]; 
+    return root.arr[0 .. root.capacity.hSR]; 
 }
 auto arr(T)(inout ref T root)
 out
@@ -1352,7 +982,7 @@ do
     //if(root.max >= val) { return false; }
     if(root.isLeaf) return root.maxImpl(val); 
     root.value_ = root.value_ & lowerMask; 
-    root.value_ = root.value_ | (val << (defaultBaseSize/2));
+    root.value_ = root.value_ | (val << (CHAR_BIT * size_t.sizeof/2));
     return true;
 }
 /**
@@ -1379,11 +1009,3 @@ do
 {
     root.emptyImpl(_); 
 }
-
-/*
-template condImplCall(string FunName, string Arg = "val") //pragma(msg, ImplCall!(__FUNCTION__));
-{
-    import std.array : split, join; 
-    enum condImplCall = "if(root.isLeaf) return root." ~ FunName.split(".")[1..$].join(".") ~ "Impl(" ~ Arg ~ ");";
-}
-*/
