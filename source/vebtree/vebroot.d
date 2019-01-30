@@ -1,16 +1,11 @@
 module vebtree.vebroot; 
 import vebtree; 
-import std.bitmanip : taggedPointer; 
-public import core.bitop;
-import std.traits;
-public import std.range; 
+import core.bitop;
+import std.traits : ReturnType, isIterable;
+import std.range;
+import std.typecons : Flag, Yes, No; 
 public import std.math : nextPow2; 
 public import core.stdc.limits : CHAR_BIT; 
-import std.algorithm.iteration : each, map, uniq, sum, filter;
-public import std.algorithm.searching : until, find, canFind, maxIndex, count, minElement, maxElement; 
-public import std.algorithm.sorting : sort, isSorted; 
-import std.algorithm.setops : setSymmetricDifference; 
-import std.algorithm.mutation : remove; 
 
 debug 
 {
@@ -57,6 +52,8 @@ version(unittest)
     }
     
     /// precalculated powers of two table for unit testing
+    import std.range : iota; 
+    import std.algorithm.iteration : map;
     enum powersOfTwo = (CHAR_BIT * size_t.sizeof).iota.map!(a => size_t(1) << a); 
     enum testMultiplier = 1; //16
     
@@ -115,7 +112,8 @@ unittest
     size_t M = uniform(1UL,uint.max); //set universe size to some integer. 
     auto hSR = hSR(M); 
     assert((hSR & (hSR - 1)) == 0, errorString); 
-    
+    import std.range : array; 
+    import std.algorithm.searching : until;
     auto check = powersOfTwo.until(hSR).array; 
     assert((check[$-1]) * (check[$-1]) < M, errorString); 
 }
@@ -140,6 +138,7 @@ unittest
     
     assert((lSR & (lSR - 1)) == 0, errorString); 
     assert(lSR * lSR < M, errorString);
+    import std.algorithm.searching : find;
     auto check = powersOfTwo.find(lSR); 
 }
 
@@ -325,6 +324,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
                 }
             }
 
+            import std.algorithm.sorting : sort; 
             cacheArray.sort;
             
             if(cacheArray.empty)
@@ -340,6 +340,8 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             {
                 assert(bt(&vT.value_, el));
             }
+            import std.algorithm.iteration : uniq;
+            import std.algorithm.searching : count; 
             assert(vT.length == cacheArray.uniq.count);
             assert(vT.universe == M);
             if(cacheArray.length)
@@ -368,6 +370,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
 
             foreach(key; 0 .. vT.universe)
             {
+                import std.algorithm.searching : canFind; 
                 if(cacheArray.uniq.array.canFind(key))
                 {
                     assert(key in vT); 
@@ -388,15 +391,14 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             
             if(cacheArray.length)
             {
-                auto valToRemove = cacheArray.uniq.array.randomCover.front; 
-                vT.removeImpl(valToRemove);
-                assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << valToRemove)); 
-                cacheArray
-                    .count(valToRemove)
-                    .iota
-                    .each!(i => cacheArray = 
-                                cacheArray
-                                    .remove(cacheArray.length - cacheArray.find(valToRemove).length));
+                auto val = cacheArray.uniq.array.randomCover.front; 
+                vT.removeImpl(val);
+                assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << val)); 
+                import std.algorithm.iteration : each;
+                import std.algorithm.searching : count, find; 
+                import std.algorithm.mutation : remove; 
+                cacheArray.count(val).iota
+                    .each!(i => cacheArray = cacheArray.remove(cacheArray.length - cacheArray.find(val).length));
             }
             else
             {
@@ -405,6 +407,7 @@ static foreach(_; 1 .. size_t.sizeof - 1)
             
             foreach(key; 0 .. vT.capacity)
             {
+                import std.algorithm.searching : canFind; 
                 if(cacheArray.uniq.array.canFind(key))
                 {
                     assert(vT.removeImpl(key)); 

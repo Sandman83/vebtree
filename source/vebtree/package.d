@@ -82,6 +82,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
     ///
     unittest
     {
+        import std.range : iota; 
         foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -340,6 +341,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
     ///
     unittest
     {
+        import std.range : iota; 
         foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
@@ -421,7 +423,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                     }
                 }
             }
-
+            import std.algorithm.sorting : sort; 
             cacheArray.sort;
 
             foreach (i, el; cacheArray)
@@ -437,6 +439,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                 }
             }
 
+            import std.range : retro, enumerate; 
             foreach (i, el; cacheArray.retro.enumerate)
             {
                 assert(el in vT);
