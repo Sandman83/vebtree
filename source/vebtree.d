@@ -37,10 +37,10 @@ module vebtree;
 import core.bitop;
 import std.traits : ReturnType, isIterable, arity;
 import std.typecons : Flag, Yes, No;
-public import std.math : nextPow2;
-public import core.stdc.limits : CHAR_BIT;
+import std.math : nextPow2;
+import core.stdc.limits : CHAR_BIT;
 
-debug public import std.format : format;
+debug import std.format : format;
 
 version (unittest)
 {
@@ -96,7 +96,6 @@ version (unittest)
         return format!"%s: %d baseSize: %d; seed: %d M: %d"(identifier1, identifier2, baseSize, currentSeed, M);
     }
 }
-
 
 // bit mask representing uint.max. 
 enum size_t lowerMask = size_t.max >> (size_t.sizeof * CHAR_BIT / 2);
