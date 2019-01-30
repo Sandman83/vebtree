@@ -870,8 +870,9 @@ package:
 bool setEmpty(T)(ref T root) @nogc
 {
     if(root.isLeaf) return root.setEmptyImpl;
-    else root.value_ = 1;
-    return true; 
+    const retVal = root.value_ == -NIL ? true : false; 
+    root.value_ = -NIL;
+    return retVal; 
 }
 
 private: 

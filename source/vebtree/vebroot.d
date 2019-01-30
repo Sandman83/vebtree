@@ -101,9 +101,9 @@ This function returns the higher square root of the given input. It is needed in
 of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
 summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
-package size_t hSR(size_t value) @nogc  
+package size_t hSR(size_t val) @nogc  
 {
-    return size_t(1) << (bsr(value)/2 + ((value.bsr & 1) || ((value != 0) && (value & (value - 1))))); 
+    return size_t(1) << (bsr(val)/2 + ((val.bsr & 1) || ((val != 0) && (val & (val - 1))))); 
 }
 //
 unittest
@@ -125,9 +125,9 @@ This function returns the lower square root of the given input. It is needed by 
 high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
 lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
-package size_t lSR(size_t value) @nogc  
+package size_t lSR(size_t val) @nogc  
 {
-    return size_t(1) << (bsr(value)/2);
+    return size_t(1) << (bsr(val)/2);
 }
 //
 unittest
@@ -147,14 +147,14 @@ unittest
 This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. It is a part of the ideal indexing function.
 */
-private size_t high(size_t universe, size_t value) @nogc  
+private size_t high(size_t universe, size_t val) @nogc  
 out(result)
 {
-    assert(result == value / universe.lSR); // bithacks = keithschwarz
+    assert(result == val / universe.lSR); // bithacks = keithschwarz
 }
 do
 {
-    return value >> (bsr(universe) / 2); 
+    return val >> (bsr(universe) / 2); 
 }
 //
 unittest
@@ -174,16 +174,16 @@ unittest
 This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
 value inside a cluster. It is part of the ideal indexing function
 */
-private size_t low(size_t universe, size_t value) @nogc 
-in
+private size_t low(size_t universe, size_t val) @nogc 
+out(retVal)
 {
-    //assert((universe & (universe - 1)) == 0); 
+    assert(retVal == (val & ((size_t(1) << (bsr(universe) / 2)) - 1)));
 }
 do
 {
-    //return value & ((size_t(1) << (bsr(universe) / 2)) - 1);
-    return value % universe.lSR; 
+    return val % universe.lSR; 
 }
+
 //
 unittest
 {
