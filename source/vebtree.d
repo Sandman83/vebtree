@@ -248,12 +248,12 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             assert(vT.value_ == 0, errorString);
             if (vT.isLeaf)
             {
-                assert(vT.ptr is null, errorString);
+                assert(vT.ptr_ is null, errorString);
                 assert(vT.capacity == baseSize, errorString);
             }
             else
             {
-                assert(!(vT.ptr is null), errorString);
+                assert(!(vT.ptr_ is null), errorString);
                 assert(vT.capacity == (vT.universe - 1).nextPow2, errorString);
             }
 
@@ -618,18 +618,6 @@ A van Emde Boas node implementation
 */
 struct VEBroot(size_t baseSize)
 {
-    invariant
-    {
-        if (!(ptr is null))
-        {
-            assert(universe >= 2);
-        }
-        if (universe <= baseSize)
-        {
-            assert(ptr is null);
-        }
-    }
-
     /**
     the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
     changes dynamically with the architecture used. 
@@ -671,10 +659,8 @@ struct VEBroot(size_t baseSize)
     bool opEquals(T)(auto ref T input) const if (isIterable!T)
     {
         static if (hasLength!T)
-        {
             if (length != input.length)
                 return false;
-        }
 
         size_t currentElem = this.min;
 
@@ -714,7 +700,7 @@ struct VEBroot(size_t baseSize)
                 2. ask it about the reduced low(value, uS) value
                 3. use the lSR(uS) universe size of the childe node. 
             */
-            return low(key) in ptr[high(key)];
+            return low(key) in ptr_[high(key)];
         }
     }
 
@@ -782,14 +768,14 @@ struct VEBroot(size_t baseSize)
             const arrSize = this.capacity.hSR + 1;
             
             // reserve enough place for the summary and the children cluster
-            ptr = (new typeof(this)[arrSize]).ptr;
+            ptr_ = (new typeof(this)[arrSize]).ptr;
 
             // add higher square root children with lower square root universe each.
-            foreach (i, ref el; ptr[0 .. this.capacity.hSR])
+            foreach (i, ref el; cluster)
                 el = typeof(this)(this.capacity.lSR);
 
             // add the summary with its universe of higher squaure root of the current universe
-            ptr[this.capacity.hSR] = typeof(this)(this.capacity.hSR);
+            summary = typeof(this)(this.capacity.hSR);
         }
         assert(!length_ == this.empty);
     }
@@ -807,9 +793,7 @@ struct VEBroot(size_t baseSize)
     */
     bool empty() const
     {
-        if (isLeaf) 
-            return value_ == 0; // pass control to the node
-        return value_ == -NIL;
+        return isLeaf ? value_ == 0 : value_ == -NIL;
     }
 
     /**
@@ -849,9 +833,7 @@ struct VEBroot(size_t baseSize)
     */
     size_t capacity() @nogc const
     {
-        if (isLeaf) // pass control to the node
-            return baseSize;
-        return (universe - 1).nextPow2;
+        return isLeaf ? baseSize : (universe - 1).nextPow2;
     }
 
     /**
@@ -934,7 +916,7 @@ struct VEBroot(size_t baseSize)
             return NIL;
         if (isLeaf) // pass control to the node
         {
-            if (val + 1 >= baseSize) // TODO:
+            if (val + 1 >= baseSize) // all vals are reduced by one. 
                 return NIL;
 
             // create a mask, which hides all lower bits of the stored value up to the given bit number, then apply
@@ -1094,6 +1076,13 @@ struct VEBroot(size_t baseSize)
         return length(length + cluster[nextTreeIndex].insert(low(val)));
     }
 
+    /**
+    The cached value of the universe, provided on creation
+    */
+    size_t universe() @nogc const
+    {
+        return universe_;
+    }
     private:
     bool min(size_t val)
     {
@@ -1152,21 +1141,26 @@ struct VEBroot(size_t baseSize)
         return .high(this.capacity, val); 
     }
 
+    void universe(size_t val)
+    {
+        universe_ = val; 
+    }
+    
     size_t value_;
-    size_t universe;
+    size_t universe_;
     size_t length_;
-    typeof(this)* ptr;
+    typeof(this)* ptr_;
 
     ref summary() inout
     in(!isLeaf)
     { // return the last element of the array of children, stored in the node. 
-        return ptr[capacity.hSR];
+        return ptr_[capacity.hSR];
     }
 
     auto cluster() inout
     in(!isLeaf)
     { // return all of the children in the stored array, but the last element 
-        return ptr[0 .. capacity.hSR];
+        return ptr_[0 .. capacity.hSR];
     }
 
     // The empty setter of a node. This function is kept for consistency in this module. 
