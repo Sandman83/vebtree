@@ -5,6 +5,5 @@
 	"authors": ["Alexander Orlov"],
     "license": "BSL-1.0",
     "targetPath": "./bin",
-    "targetType": "library", 
-    "dflags" : ["-betterC"]
+    "targetType": "library"
 }
