@@ -1,11 +1,10 @@
 {
 	"name": "vebtree",
 	"description": "A library for van Emde Boas tree",
-	"copyright": "Copyright © 2016, Alexander Orlov",
+	"copyright": "Copyright © 2016-, Alexander Orlov",
 	"authors": ["Alexander Orlov"],
-    "license": "MIT",
+    "license": "BSL-1.0",
     "targetPath": "./bin",
-    "targetType": "library",
-	"dependencies": {
-	}
+    "targetType": "library", 
+    "dflags" : ["-betterC"]
 }
