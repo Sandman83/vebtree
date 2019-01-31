@@ -1,0 +1,1351 @@
+         |/**
+         |Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
+         |License: $(LINK2 https://opensource.org/licenses/MIT, MIT License).
+         |Authors: Alexander Orlov, $(LINK2 mailto:sascha.orlov@gmail.com, sascha.orlov@gmail.com) 
+         |*/
+         |
+         |/**
+         |This module implements a Van Emde Boas tree container.
+         |All corrections, bug findings pull requests and comments are welcome. 
+         |The main idea of the container is, to restrict the capacity of the tree by the next power of two universe size,
+         |given an arbitrary size at the initialization. 
+         |*/
+         |
+         |/**
+         |The main advantage of the Van Emde Boas tree appears on a large amount of elements, as the provided standard
+         |operations of the tree are constant in time and of order O(lg2(lg2(U))), where U is the capacity of the tree, constant 
+         |after creation. For small amount of elements the overhead coming along with the structure take over. However, if the 
+         |universe size becomes bigger, the tree performance becomes better.
+         |*/
+         |
+         |/**
+         |Be aware, the current container is intended to be used with keys. This implies, that the capacity, fixed on its
+         |initialization has two meanings. As usual, it shows the maximum amount of elements the instanciated tree can keep.
+         |But also, it states, that no value bigger then capacity - 1 exists in the tree. This, and the fact, that only
+         |non-negative values can be used are infered from the term "key".
+         |*/
+         |
+         |/**
+         |See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
+         |Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
+         |further helpful source was the C++ implementation found here, 
+         |http://www.keithschwarz.com/interesting/code/van-emde-boas-tree/
+         |where the idea of bit operations is taken from. 
+         |*/
+         |
+         |module vebtree;
+         |import core.bitop;
+         |import std.traits : ReturnType, isIterable, arity;
+         |import std.typecons : Flag, Yes, No;
+         |import std.math : nextPow2;
+         |import core.stdc.limits : CHAR_BIT;
+         |
+         |debug import std.format : format;
+         |
+         |version (unittest)
+         |{
+         |    import std.parallelism : parallel;
+         |    import std.conv : to;
+         |    import core.stdc.stdio : printf;
+         |    import std.container.rbtree : redBlackTree;
+         |
+         |    import std.range;
+         |    import std.random;
+         |    import std.format;
+         |    import std.container; // red black tree may be used in unittests for comparison.
+         |    import std.math : sqrt;
+         |
+         |    // helping function for output a given value in binary representation
+         |    void bin(size_t n)
+         |    {
+         |        /* step 1 */
+000000000|        if (n > 1)
+000000000|            bin(n / 2);
+         |        /* step 2 */
+         |
+000000000|        printf("%d", n % 2);
+         |    }
+         |
+         |    /// precalculated powers of two table for unit testing
+         |    import std.range : iota;
+         |    import std.algorithm.iteration : map;
+         |
+       48|    enum powersOfTwo = (CHAR_BIT * size_t.sizeof).iota.map!(a => size_t(1) << a);
+         |    enum testMultiplier = 1; //16
+         |
+         |    ///
+         |    /*
+         |    static assert(!isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
+         |    static assert(isIterable!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
+         |    static assert(isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
+         |    static assert(isBidirectionalRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
+         |    static assert(!is(typeof(vebRoot(4)[2])));
+         |    */
+         |
+         |    auto generateVEBtree(size_t baseSize)(uint currentSeed, size_t front, size_t back, ref size_t M)
+         |    {
+         |        static assert(baseSize > 1);
+         |        static assert((baseSize & (baseSize - 1)) == 0);
+     1151|        assert(front >= 2);
+     1151|        rndGen.seed(currentSeed); //initialize the random generator
+     1152|        M = uniform(front, back + 1); // parameter for construction
+     1152|        return vebRoot!baseSize(M);
+         |    }
+         |    string generateDebugString(string identifier1, size_t identifier2, size_t baseSize, uint currentSeed, size_t M)
+         |    {
+     1152|        return format!"%s: %d baseSize: %d; seed: %d M: %d"(identifier1, identifier2, baseSize, currentSeed, M);
+         |    }
+         |}
+         |
+         |// bit mask representing uint.max. 
+         |enum size_t lowerMask = size_t.max >> (size_t.sizeof * CHAR_BIT / 2);
+         |// bit mask representing size_t.back without uint.max. 
+         |enum size_t higherMask = size_t.max ^ lowerMask;
+         |
+         |/*
+         |This function returns the higher square root of the given input. It is needed in the initialization step 
+         |of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
+         |summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
+         |*/
+         |size_t hSR(size_t val) @nogc
+         |{
+ 36349440|    return size_t(1) << (bsr(val) / 2 + ((val.bsr & 1) || ((val != 0) && (val & (val - 1)))));
+         |}
+         |//
+         |unittest
+         |{
+         |
+        1|    auto currentSeed = unpredictableSeed();
+        1|    const errorString = format!"UT: hSR. seed: %d"(currentSeed);
+        1|    rndGen.seed(currentSeed); //initialize the random generator
+        1|    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
+        1|    auto hSR = hSR(M);
+        1|    assert((hSR & (hSR - 1)) == 0, errorString);
+         |    import std.range : array;
+         |    import std.algorithm.searching : until;
+         |
+        1|    auto check = powersOfTwo.until(hSR).array;
+        1|    assert((check[$ - 1]) * (check[$ - 1]) < M, errorString);
+         |}
+         |
+         |/*
+         |This function returns the lower square root of the given input. It is needed by the indexing functions
+         |high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
+         |lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
+         |*/
+         |size_t lSR(size_t val) @nogc
+         |{
+ 55986610|    return size_t(1) << (bsr(val) / 2);
+         |}
+         |//
+         |unittest
+         |{
+        1|    auto currentSeed = unpredictableSeed();
+        1|    const errorString = format!"UT: lSR               seed: %d"(currentSeed);
+        1|    rndGen.seed(currentSeed); //initialize the random generator
+        1|    const M = uniform(1UL, uint.max); //set universe size to some integer. 
+        1|    auto lSR = M.lSR;
+         |
+        1|    assert((lSR & (lSR - 1)) == 0, errorString);
+        1|    assert(lSR * lSR < M, errorString);
+         |    import std.algorithm.searching : find;
+         |
+        1|    assert(!powersOfTwo.find(lSR).empty);
+         |}
+         |
+         |/*
+         |This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
+         |of a element in the tree. It is a part of the ideal indexing function.
+         |*/
+         |size_t high(size_t universe, size_t val) @nogc
+ 39886496|out (result; result == val / universe.lSR) // bithacks = keithschwarz
+         |{
+ 39877818|    return val >> (bsr(universe) / 2);
+         |}
+         |//
+         |unittest
+         |{
+        1|    auto currentSeed = unpredictableSeed();
+        1|    const errorString = format!"UT: high              seed: %d"(currentSeed);
+        1|    rndGen.seed(currentSeed); //initialize the random generator
+        1|    const M = uniform(1UL, uint.max); //set universe size to some integer. 
+        1|    assert(M, errorString);
+        1|    size_t U = M.nextPow2;
+        1|    assert(U, errorString);
+        1|    auto x = uniform(0UL, U);
+        1|    assert(high(U, x) == x / U.lSR, errorString);
+         |}
+         |
+         |/*
+         |This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
+         |value inside a cluster. It is part of the ideal indexing function
+         |*/
+         |size_t low(size_t universe, size_t val) @nogc
+ 53482762|out (retVal; retVal == (val & ((size_t(1) << (bsr(universe) / 2)) - 1)))
+         |{
+ 53395041|    return val % universe.lSR;
+         |}
+         |//
+         |unittest
+         |{
+        1|    auto currentSeed = unpredictableSeed();
+        1|    const errorString = format!"UT: low               seed: %d"(currentSeed);
+        1|    rndGen.seed(currentSeed); //initialize the random generator
+        1|    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
+        1|    size_t U = nextPow2(M);
+        1|    auto x = uniform(0UL, U);
+        1|    assert(low(U, x) == (x & (U.lSR - 1)), errorString);
+         |}
+         |
+         |/*
+         |This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
+         |relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
+         |*/
+         |size_t index(size_t universe, size_t x, size_t y) @nogc
+         |{
+  8933389|    return (x * universe.lSR + y);
+         |}
+         |//
+         |unittest
+         |{
+        1|    auto currentSeed = unpredictableSeed();
+        1|    const errorString = format!"UT: index             seed: %d"(currentSeed);
+        1|    rndGen.seed(currentSeed); //initialize the random generator
+        1|    const M = uniform(0UL, uint.max); //set universe size to some integer. 
+        1|    size_t U = M.nextPow2;
+        1|    auto x = uniform(0UL, U);
+        1|    assert(index(U, U.high(x), U.low(x)) == x, errorString);
+         |}
+         |
+         |auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
+         |{
+         |    static if(Args.length)
+         |    {
+      384|        auto retVal = VEBtree!(inclusive, root)(args[0], args[1], args[2]);
+         |    }
+         |    else
+         |    {
+     3456|        auto retVal = VEBtree!(inclusive, root)(root.front, root.back, root.length);
+         |    }
+         |
+     3834|    return retVal;
+         |}
+         |
+         |static foreach (_; 1 .. size_t.sizeof - 1)
+         |{
+         |    unittest
+         |    {
+         |        enum baseSize = 1 << _;
+        6|        foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
+         |        {
+      384|            auto currentSeed = unpredictableSeed();
+      384|            size_t M;
+         |
+      384|            auto vT = generateVEBtree!(1 << _)(currentSeed, 2UL, baseSize, M);
+      384|            assert(vT.universe == M);  
+      384|            const errorString = generateDebugString("UT: white box test: ", b, baseSize, currentSeed, M);
+         |
+      384|            assert(vT.value_ == 0, errorString);
+      384|            assert(vT.ptr_ is null, errorString);
+      384|            assert(vT.capacity == baseSize, errorString);
+      384|            assert(vT.empty == true, errorString);
+      384|            assert(vT.front == NIL, errorString);
+      384|            assert(vT.back == NIL, errorString);
+      384|            assert(vT[].front == 0, errorString);
+      384|            assert(vT[].back == vT.universe, errorString);
+      384|            assert(vT().front == NIL, errorString);
+      384|            assert(vT().back == NIL, errorString);
+      384|            assert(vT.length == 0, errorString);
+      384|            assert(vT.universe == M, errorString);
+         |
+      384|            size_t N = uniform(0UL, 2 * M); // independent parameter for testing
+         |            // make an array of length N
+      768|            size_t[] testArray, cacheArray;
+      384|            testArray = new size_t[N];
+      384|            cacheArray.reserve(N);
+         |            // fill the array with all possible values 
+    13539|            foreach (ref el; testArray)
+         |            {
+     4130|                el = (2 * M).iota.choice;
+         |            }
+         |
+    13533|            foreach (testNumber; testArray)
+         |            {
+     4128|                assert(vT.universe == M, errorString);
+     4128|                const insertResult = vT.insert(testNumber);
+         |
+     4125|                if (insertResult)
+         |                {
+     2274|                    assert(!vT.empty, errorString);
+     2274|                    cacheArray ~= testNumber;
+         |                }
+         |            }
+         |
+         |            import std.algorithm.sorting : sort;
+         |
+      384|            cacheArray.sort;
+         |
+      384|            if (cacheArray.empty)
+         |            {
+       57|                assert(vT.empty, errorString);
+         |            }
+         |            else
+         |            {
+      327|                assert(!vT.empty, errorString);
+         |            }
+         |
+     7974|            foreach (el; cacheArray)
+         |            {
+     2275|                assert(bt(&vT.value_, el), errorString);
+         |            }
+         |            import std.algorithm.iteration : uniq;
+         |            import std.algorithm.searching : count;
+         |
+      384|            assert(vT.length == cacheArray.uniq.count, errorString);
+      384|            assert(vT.universe == M, errorString);
+      384|            if (cacheArray.length)
+         |            {
+      327|                assert(vT.front == cacheArray.front, errorString);
+      327|                assert(vT.back == cacheArray.back, errorString);
+         |            }
+         |            else
+         |            {
+       57|                assert(vT.front == NIL, errorString);
+       57|                assert(vT.back == NIL, errorString);
+         |            }
+         |
+      384|            auto currElement = vT.front;
+     7559|            foreach (el; cacheArray.uniq)
+         |            {
+     2275|                assert(currElement == el, errorString);
+     2275|                currElement = vT.next(currElement);
+         |            }
+      384|            currElement = vT.back;
+     7579|            foreach (el; cacheArray.uniq.array.retro)
+         |            {
+     2275|                assert(currElement == el, errorString);
+     2275|                currElement = vT.prev(currElement);
+         |            }
+         |
+    14613|            foreach (key; 0 .. vT.universe)
+         |            {
+         |                import std.algorithm.searching : canFind;
+         |
+     4492|                if (cacheArray.uniq.array.canFind(key))
+         |                {
+     1565|                    assert(key in vT, errorString);
+         |                }
+         |                else
+         |                {
+     2937|                    assert(!(key in vT), errorString);
+         |                }
+         |            }
+      383|            auto deepCopy = vT.dup;
+         |
+      384|            assert(deepCopy.value_ == vT.value_, errorString);
+      384|            assert(vT == cacheArray.uniq, errorString);
+      384|            assert(vT.prev(vT.front) == NIL, errorString);
+      384|            assert(vT.next(vT.back) == NIL, errorString);
+      383|            assert(vT == deepCopy, errorString);
+      384|            assert(vT == deepCopy(), errorString);
+         |
+      384|            if (cacheArray.length)
+         |            {
+      327|                auto val = cacheArray.uniq.array.randomCover.front;
+      327|                vT.remove(val);
+      327|                assert((deepCopy.value_ ^ vT.value_) == (size_t(1) << val), errorString);
+         |                import std.algorithm.iteration : each;
+         |                import std.algorithm.searching : count, find;
+         |                import std.algorithm.mutation : remove;
+         |
+      654|                cacheArray.count(val).iota.each!(i => cacheArray = cacheArray.remove(
+         |                        cacheArray.length - cacheArray.find(val).length));
+         |            }
+         |            else
+         |            {
+       57|                assert((deepCopy.value_ ^ vT.value_) == 0, errorString);
+         |            }
+         |
+    25226|            foreach (key; 0 .. vT.capacity)
+         |            {
+         |                import std.algorithm.searching : canFind;
+         |
+     8033|                if (cacheArray.uniq.array.canFind(key))
+         |                {
+     1949|                    assert(vT.remove(key), errorString);
+         |                }
+         |                else
+         |                {
+     6104|                    assert(!(vT.remove(key)), errorString);
+         |                }
+         |            }
+      384|            assert(vT.value_ == 0, errorString);
+      384|            assert(vT.empty, errorString);
+         |        }
+         |    }
+         |}
+         |
+         |static foreach (_; 1 .. size_t.sizeof - 1)
+         |{
+         |    ///
+         |    unittest
+         |    {
+         |        import std.range : iota; 
+        6|        foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
+         |        {
+      384|            auto currentSeed = unpredictableSeed();
+      384|            size_t M;
+      384|            auto vT = generateVEBtree!(1 << _)
+         |                    (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
+      384|            const errorString = 
+         |                generateDebugString("UT: black box test capacity and universe: ", b, 1 << _, currentSeed, M); 
+         |            
+      384|            assert(vT.universe == M, errorString);
+      384|            assert(vT.capacity == (vT.universe - 1).nextPow2,
+         |                    to!string("vT.capacity: " ~ to!string(
+         |                        vT.capacity) ~ " vT.universe: " ~ to!string(vT.universe)));
+      384|            assert(!(vT.ptr_ is null), errorString);
+      384|            assert(vT.capacity == (vT.universe - 1).nextPow2, errorString);
+         |        }
+         |    }
+         |}
+         |
+         |static foreach (_; 1 .. size_t.sizeof - 1)
+         |{
+         |    ///
+         |    unittest
+         |    {
+         |        import std.range : iota; 
+        6|        foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
+         |        {
+      384|            auto currentSeed = unpredictableSeed();
+      383|            currentSeed = 3989648295; 
+      383|            size_t M;
+      384|            auto vT = generateVEBtree!(1 << _)
+         |                (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
+      384|            const errorString = 
+         |                generateDebugString("UT: black box test outer interface: ", b, 1 << _, currentSeed, M); 
+      384|            size_t N = uniform(0UL, 2 * M); // independent parameter for testing
+         |
+         |            // make an array of length N
+      768|            size_t[] testArray, cacheArray;
+      384|            testArray = new size_t[N];
+      384|            cacheArray.reserve(N);
+         |            // fill the array with all possible values 
+  4086723|            foreach (ref el; testArray)
+  1362880|                el = (2 * M).iota.choice;
+         |
+      384|            auto rbt = redBlackTree!size_t();
+         |
+  4188223|            foreach (val; testArray)
+         |            {
+  1395715|                assert(vT.universe == M, errorString);
+  1395708|                assert(vT.length == rbt.length, errorString);
+         |
+  1395707|                bool insertExpectation;
+  2161626|                if (val < vT.capacity && !(val in vT))
+         |                {
+   491489|                    insertExpectation = true;
+         |                }
+  1395628|                const insertResult = vT.insert(val);
+         |
+  1395667|                assert(insertResult == insertExpectation, errorString);
+         |
+  1395672|                if (insertResult)
+         |                {
+         |
+   491505|                    assert(val in vT, errorString);
+   491491|                    assert(!vT.empty, errorString);
+   491489|                    rbt.insert(val);
+   491513|                    assert(vT.front == rbt.front, errorString);
+   491507|                    assert(vT.back == rbt.back,
+         |                            "val:" ~ to!string(val) ~ " vT.back: " ~ to!string(
+         |                                vT.back) ~ " rbt.back: " ~ to!string(rbt.back));
+         |
+   491508|                    cacheArray ~= val;
+         |                }
+         |                else
+         |                {
+   904232|                    if (!(val in rbt))
+         |                    {
+   629737|                        assert(!(val in vT), errorString);
+         |                    }
+         |                    else
+         |                    {
+   274560|                        assert(val in vT, errorString);
+         |                    }
+         |                }
+         |            }
+         |
+         |            import std.algorithm.sorting : sort; 
+      384|            cacheArray.sort;
+         |
+  1966568|            foreach (i, el; cacheArray)
+         |            {
+   491355|                assert(el in vT, errorString);
+   491244|                if (i + 1 != cacheArray.length)
+         |                {
+   490860|                    assert(vT.next(el) == cacheArray[i + 1],errorString);
+         |                }
+         |                else
+         |                {
+      384|                    assert(vT.next(el) == NIL, errorString);
+         |                }
+         |            }
+         |
+   983114|            foreach (i, el; vT)
+   491377|                assert(el == cacheArray[i], errorString);
+         |            
+      384|            assert(vT == cacheArray, errorString); 
+         |
+      384|            auto vT2 = vT.dup; 
+      384|            assert(vT == vT2); 
+         |
+      384|            if(cacheArray.length)
+         |            {
+      384|                auto rndNum = cacheArray.choice; 
+      384|                vT2.remove(rndNum); 
+      384|                assert(!(rndNum in vT2));
+      384|                assert(rndNum in vT);
+      384|                assert(vT != vT2); 
+      384|                rndNum = uniform(0UL, vT2.capacity);
+      384|                if(!(rndNum in vT))
+         |                {
+000000000|                    assert(!(rndNum in vT), errorString ~ format!"rndNum: %d"(rndNum));
+000000000|                    assert(vT2.insert(rndNum), errorString);
+         |                }
+      384|                assert(vT != vT2); 
+         |                //auto vT3 = vT2; 
+         |                //vT3.insert(rndNum); 
+         |                //assert(rndNum in vT3);
+         |                //assert(rndNum in vT2); 
+         |                //assert(vT2.length == vT3.length); 
+         |            }
+         |
+      384|            const rangeExclusive = vT(); 
+      384|            assert(vT == rangeExclusive); 
+         |
+      384|            auto rangeInclusive = vT[]; 
+         |            import std.range : enumerate; 
+  2458274|            foreach(i, el; rangeInclusive.enumerate)
+         |            {
+   491737|                if(i == 0)
+         |                {
+      384|                    if(!(0 in vT))
+         |                    {
+000000000|                        continue;
+         |                    }
+         |                }
+   491358|                else if(i + 1 != rangeInclusive.length)
+         |                {
+   491026|                    assert(el in vT, errorString ~ format!" el: %d"(el)); 
+         |                }
+      384|                else if(i + 1 == rangeInclusive.length)
+         |                {
+      768|                    assert(el == vT.universe || el == vT.capacity);
+      384|                    if(el == vT.universe)
+         |                    {
+000000000|                        assert(vT.back <= vT.universe || vT.back == NIL, errorString ~ format!" length: %d"(vT.length)); 
+         |                    }
+         |                    else
+         |                    {
+      384|                        assert(vT.back > vT.universe, errorString); 
+      384|                        assert(vT.back < vT.capacity, errorString); 
+         |                    }
+         |                }
+         |                else
+         |                {
+000000000|                    assert(0); 
+         |                }
+         |            }
+         |
+         |            import std.range : retro, enumerate; 
+  2456373|            foreach (i, el; cacheArray.retro.enumerate)
+         |            {
+   491508|                assert(el in vT, errorString);
+   491163|                if (i + 1 != cacheArray.length)
+         |                {
+   490781|                    assert(vT.prev(el) == cacheArray[($ - 1) - (i + 1)], errorString);
+         |                }
+         |                else
+         |                {
+      384|                    assert(vT.prev(el) == NIL, errorString);
+         |                }
+         |            }
+         |
+  4186364|            foreach (val; testArray)
+         |            {
+  1395112|                assert(vT.length == rbt.length, errorString);
+  1395155|                if (val in rbt)
+         |                {
+   491483|                    assert(val in vT, errorString);
+   491359|                    rbt.removeKey(val);
+   491464|                    assert(vT.remove(val), errorString);
+         |                }
+         |                else
+         |                {
+   904225|                    assert(!(val in vT), errorString);
+   904072|                    assert(!vT.remove(val), errorString);
+         |                }
+  1394813|                assert(!(val in rbt), errorString);
+  1395536|                assert(!(val in vT), errorString);
+         |            }
+      384|            assert(vT.length == 0, errorString);
+      384|            assert(rbt.length == 0, errorString);
+         |        }
+         |    }
+         |}
+         |
+         |/**
+         |define the absence of a key to be -1. 
+         |*/
+         |enum NIL = ptrdiff_t(-1);
+         |
+         |/**
+         |The tree creator function. Optionally, the base size can be provided at compile time, however, the best results are 
+         |achieved with the default base size of CHAR_BIT * size_t.sizeof
+         |*/
+         |auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
+         |{
+         |    /**
+         |    Two parameters are provided: 
+         |    - the base size is the maximal amount bits can be stored in a single node without branching (generating children)
+         |    - the universe is the user provided input, providing the expected amount of keys, going to be stored in the tree
+         |    */
+     1151|    return VEBroot!baseSize(universe);
+         |}
+         |
+         |/**
+         |A van Emde Boas node implementation
+         |*/
+         |struct VEBroot(size_t baseSize)
+         |{
+000000000|    size_t toHash() const nothrow { assert(0); }
+         |
+         |    /**
+         |    yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
+         |    */
+         |    typeof(this) dup()
+         |    {
+      767|        auto retVal = typeof(this)(universe);
+  1482074|        foreach (el; opCall())
+   493625|            retVal.insert(el);
+      768|        return retVal;
+         |    }
+         |
+         |    /**
+         |    []-slicing. Yields a "random access range" with the content of the tree, always containing zero and universe as keys
+         |    */
+         |    auto opIndex()
+         |    {
+     1152|        return vebTree!(Yes.inclusive, this)();
+         |    }
+         |
+         |    /**
+         |    ()-slicing. Yields a "random access range" with the content of the tree. Keys can be NIL. 
+         |    */
+         |    auto opCall()
+         |    {
+     2304|        return vebTree!(No.inclusive, this)();
+         |    }
+         |
+         |    /**
+         |    Equality operator checks for any iterable, whether in contains the same values, as the current tree. 
+         |    */
+         |    bool opEquals(T)(auto ref T input) const if (isIterable!T)
+         |    {
+         |        static if (hasLength!T)
+     2302|            if (length != input.length)
+      768|                return false;
+         |
+     1916|        size_t currentElem = this.front;
+         |
+  1984613|        foreach (el; input)
+         |        {
+   989397|            if (el != currentElem)
+000000000|                return false;
+   989414|            currentElem = this.next(currentElem);
+         |        }
+         |
+     1918|        return true;
+         |    }
+         |
+         |    /**
+         |    member method for the case universe size < base size. Overloads by passing only one parameter, which is
+         |    the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
+         |    */
+         |    bool opBinaryRight(string op)(size_t key) @nogc if (op == "in")
+         |    {
+ 13658401|        if (key >= this.capacity)
+  1888702|            return false;
+         |
+ 11767045|        if (this.empty) // if an empty intermediate node is found, nothing is stored below it. 
+   763666|            return false;
+         |
+ 11004234|        if (this.isLeaf)
+  3070677|            return bt(&value_, key) != 0;
+         |        else
+         |        {
+         |            // case of a single valued range. 
+ 15470295|            if (key == this.front || key == this.back)
+   704276|                return true;
+         |
+         |            /*
+         |                else we have to descend, using the recursive indexing: 
+         |                1. take the high(value, uS)-th child and 
+         |                2. ask it about the reduced low(value, uS) value
+         |                3. use the lSR(uS) universe size of the childe node. 
+         |            */
+  7242347|            return low(key) in ptr_[high(key)];
+         |        }
+         |    }
+         |
+         |    /**
+         |    the opApply method grants the correct foreach behavior, nogc version
+         |    */
+         |    int opApply(scope int delegate(ref size_t) @nogc operations) const @nogc
+         |    {
+     1151|        return opApplyImpl(operations);
+         |    }
+         |    
+         |    /**
+         |    ditto
+         |    */
+         |    int opApply(scope int delegate(ref size_t, ref size_t) @nogc operations) const @nogc
+         |    {
+      384|        return opApplyImpl(operations);
+         |    }
+         |
+         |    /**
+         |    ditto
+         |    */
+         |    int opApply(scope int delegate(ref size_t) operations) const 
+         |    {
+000000000|        return opApplyImpl(operations);
+         |    }
+         |
+         |    /**
+         |    ditto
+         |    */
+         |    int opApply(scope int delegate(ref size_t, ref size_t) operations) const 
+         |    {
+000000000|        return opApplyImpl(operations);
+         |    }
+         |
+         |    /**
+         |    Node constructor. A universe size provided, if the size is below the cutoff there is nothing to be done, as the
+         |    underlying value created and set to zero by default. 
+         |    If otherwise create an array of children. This array has to be (according to Cormen) of size of higher square
+         |    root of the current universe size + 1. The extra place is reserved for the summary. 
+         |    For each just created child call its constructor.
+         |    For the summary with the universe size of the higher square root of the current universe size. 
+         |    For each other child with the universe size of the lower square root of the currennt universe size. 
+         |    Then, assign the fully initialized children array to the pointer in the current node, doing approprate steps to
+         |    show, that this node is an intermediate node, not containing any values yet. 
+         |    The knowledge of the current universe size is lost at this moment. As this keeps every build up node smaller 
+         |    (and there could be a lot of them). This is why, the VEBtree class continues to hold the global universe size,
+         |    which is passed on every call to the root node. In this way this, extern saved value has the role of being
+         |    outsourced array size for each (!) node in the tree, as its size is reconstructed during the access to them. 
+         |    */
+         |    
+         |    @disable this(this); 
+         |
+  1061489|    this(size_t val)
+  1093634|    in(val >= 2)
+         |    {
+  1095771|        universe = val;
+  1092488|        setEmpty;
+         |        
+  1074706|        assert(!length_ == this.empty);
+         |
+  1061377|        if (!isLeaf)
+         |        {
+   217157|            assert(this.capacity == (universe - 1).nextPow2);
+   218625|            const arrSize = this.capacity.hSR + 1;
+         |            
+         |            // reserve enough place for the summary and the children cluster
+   218835|            ptr_ = (new typeof(this)[arrSize]).ptr;
+         |
+         |            // add higher square root children with lower square root universe each.
+  4078533|            foreach (i, ref el; cluster)
+   886572|                el = typeof(this)(this.capacity.lSR);
+         |
+         |            // add the summary with its universe of higher squaure root of the current universe
+   218459|            summary = typeof(this)(this.capacity.hSR);
+         |        }
+  1060957|        assert(!length_ == this.empty);
+         |    }
+         |
+         |    /**
+         |    This tree has a length notion: it is the current number of inserted elements. 
+         |    */
+         |    size_t length() const @nogc
+         |    {
+ 32364174|        return length_;
+         |    }
+         |
+         |    /**
+         |    the empty method to inform of an empty state of the tree. 
+         |    */
+         |    bool empty() const
+         |    {
+226533835|        return isLeaf ? value_ == 0 : value_ == -NIL;
+         |    }
+         |
+         |    /**
+         |    This yields whether the node is a leaf node.
+         |    */
+         |    bool isLeaf() const @nogc
+         |    {
+359116650|        return universe <= baseSize;
+         |    }
+         |
+         |    /**
+         |    The minimal contained key in the van Emde Boas tree
+         |    */
+         |    size_t front() @nogc const
+         |    {
+ 34803968|        if (empty) // do not proceed at all, if the root is empty
+    48823|            return NIL;
+ 34721192|        if (isLeaf) // pass control to the node
+  2965053|            return bsf(value_);
+ 31847280|        return value_ & lowerMask;
+         |    }
+         |
+         |    /**
+         |    The maximal contained key in the van Emde Boas tree
+         |    */
+         |    size_t back() @nogc const
+         |    {
+ 40539331|        if (empty) // do not proceed at all, if the root is empty
+   204089|            return NIL;
+ 40263025|        if (isLeaf) // pass control to the node
+  4784657|            return bsr(value_);
+ 35610715|        return (value_ & higherMask) >> (CHAR_BIT * size_t.sizeof / 2);
+         |    }
+         |
+         |    /**
+         |    As a usual container, van Emde Boas tree provides the notion of capacity
+         |    */
+         |    size_t capacity() @nogc const
+         |    {
+225720897|        return isLeaf ? baseSize : (universe - 1).nextPow2;
+         |    }
+         |
+         |    /**
+         |    remove method of the van Emde Boas tree
+         |    */
+         |    bool remove(size_t val)
+         |    {
+  3166278|        if (val >= capacity) // do not proceed at all, if the value can't be in the tree 
+   629633|            return false;
+  2537609|        if (empty) // do not proceed at all, if the root is empty
+   217967|            return false;
+  2319732|        if (isLeaf) // pass control to the node
+   785951|            return length(length - (btr(&value_, val) != 0));
+  1535120|        if (front == back) // if the current node contains only a single value
+         |        {
+   103929|            assert(length == 1);
+   103929|            if (front != val)
+    41600|                return false; // do nothing if the given value is not the stored one 
+    62334|            assert(length == 1);
+    62334|            return length(length - 1);
+         |        }
+         |
+  1431215|        if (val == front) // if we met the minimum of a node 
+         |        {
+    90878|            auto treeOffset = summary.front; // calculate an offset from the summary to continue with        
+    90878|            if (treeOffset == NIL) // if the offset is invalid, then there is no further hierarchy and we are going to 
+         |            {
+    27584|                front = back; // store a single value in this node. 
+    27584|                assert(length == 2);
+    27584|                return length(length - 1);
+         |            }
+    63295|            auto m = cluster[treeOffset].front; // otherwise we get the minimum from the offset child
+         |            // remove it from the child 
+    63295|            cluster[treeOffset].remove(m);
+    63295|            if (cluster[treeOffset].empty)
+    47935|                summary.remove(treeOffset);
+         |            //anyway, the new front of the current node become the restored value of the calculated offset. 
+    63295|            front = index(treeOffset, m);
+    63295|            assert(length);
+    63295|            return length(length - 1);
+         |        }
+         |        
+  1340503|        if (val == back) // if we met the maximum of a node 
+         |        {
+         |            // calculate an offset from the summary to contiue with 
+    95163|            auto treeOffset = summary.back;
+         |            // if the offset is invalid, then there is no further hierarchy and we are going to 
+    95163|            if (treeOffset == NIL)
+         |            {
+         |                // store a single value in this node. 
+    28543|                back = front;
+    28544|                assert(length == 2);
+    28544|                return length(length - 1);
+         |            }
+         |            // otherwise we get maximum from the offset child 
+    66622|            auto m = cluster[treeOffset].back;
+         |            // remove it from the child 
+    66622|            cluster[treeOffset].remove(m);
+    66624|            if (cluster[treeOffset].empty)
+    48576|                summary.remove(treeOffset);
+         |            // anyway, the new back of the current node become the restored value of the calculated offset. 
+    66622|            back = index(treeOffset, m);
+    66623|            assert(length);
+    66623|            return length(length - 1);
+         |        }
+         |        // if no condition was met we have to descend deeper. We get the offset by reducing the value to high(value, uS)
+  1245381|        auto treeOffset = high(val);
+  1245848|        auto res = length(length - cluster[treeOffset].remove(low(val)));
+  1245858|        if (cluster[treeOffset].empty)
+   292943|            summary.remove(treeOffset);
+  1245805|        return res;
+         |    }
+         |    
+         |    /**
+         |    The successor search method of the van Emde Boas tree. 
+         |    */
+         |    size_t next(size_t val) @nogc const
+         |    {
+ 12831569|        if (empty) // do not proceed at all, if the root is empty
+   100837|            return NIL;
+ 12732316|        if (isLeaf) // pass control to the node
+         |        {
+  4158787|            if (val + 1 >= baseSize) // all vals are reduced by one. 
+   189117|                return NIL;
+         |
+         |            // create a mask, which hides all lower bits of the stored value up to the given bit number, then apply
+         |            // bit search from the lowest bit. 
+  3970314|            auto maskedVal = value_ & ~((size_t(1) << (val + 1)) - 1);
+         |            
+  3970732|            if (maskedVal != 0)
+  3873248|                return maskedVal.bsf;
+         |
+    98005|            return NIL;
+         |        }
+         |        // if given value is less then the front, return the front as successor
+  8597589|        if (val < front)
+    48380|            return front;
+         |        // if given value is greater then the back, no predecessor exists
+  8543386|        if (val >= back)
+   123639|            return NIL;
+         |        // if none of the break conditions was met, we have to descent further into the tree. 
+         |        // calculate the child index by high(value, uS)
+  8413327|        const childIndex = high(val);
+         |        // look into the child for its maximum
+  8430987|        const maxlow = cluster[childIndex].back;
+         |        // if the maximum exists and the lowered given value is less then the child's maximum 
+ 16692387|        if ((maxlow != NIL) && (low(val) < maxlow))
+         |        {
+  6351719|            auto offset = cluster[childIndex].next(low(val));
+         |            // the result is given by reconstruction of the answer
+  6349781|            return index(childIndex, offset);
+         |        }
+         |        else // otherwise we can not use the maximum of the child 
+         |        {
+  2089178|            auto succcluster = summary.next(childIndex);
+         |            // if the successor cluster is null
+  2088819|            if (succcluster == NIL)
+   504959|                return back;
+  1584562|            assert(succcluster != NIL);
+  1584567|            assert(cluster[succcluster].front != NIL);
+         |            // if the successor cluster exists, the offset is given by its minimum
+         |            // and the result by the reconstruction of the offset. 
+  1584736|            return index(succcluster, cluster[succcluster].front);
+         |        }
+         |    }
+         |
+         |    /**
+         |    The predecessor search method of the van Emde Boas tree. 
+         |    */
+         |    size_t prev(size_t val) @nogc
+         |    {
+  1431838|        if (empty) // do not proceed at all, if the root is empty
+    11256|            return NIL;
+  1420577|        if (isLeaf) // pass control to the node
+         |        {
+   463810|            if (val != 0)
+         |            {
+         |                /*
+         |                create a mask, which hides all higher bits of the stored value down to the given bit number, then apply
+         |                bit search from the highest bit. 
+         |                */
+   439187|                auto maskedVal = value_ & ((size_t(1) << val) - 1);
+         |
+   439196|                if (maskedVal != 0)
+   431587|                    return typeof(return)(maskedVal.bsr);
+         |            }
+    32269|            return NIL;   
+         |        }
+         |        // if given value is greater then the stored back, the predecessor is back
+   957387|        if (val > back)
+     5184|            return back;
+         |        // if given value is less then the front, no predecessor exists. 
+   952046|        if (val <= front)
+    13696|            return NIL;
+         |        // if none of the break conditions was met we have to descend further into the tree. 
+   938240|        auto childIndex = high(val); // calculate the child index by high(value, uS)
+   938615|        const minlow = cluster[childIndex].front; // look into the child for its minimum
+         |        // if the minimum exists and the lowered given value is greater then the child's minimum
+  1858689|        if ((minlow != NIL) && (low(val) > minlow))
+         |        {
+   707206|            auto offset = cluster[childIndex].prev(low(val));
+         |            // the result is given by reconstruction of the answer. 
+   707232|            return index(childIndex, offset);
+         |        }
+         |        else // otherwise we can not use the minimum of the child 
+         |        {
+   231820|            auto predcluster = summary.prev(childIndex);
+         |            // if the predecessor cluster is null return the current front, as this is the last remaining value 
+   231825|            if (predcluster == NIL)
+    56126|                return front;
+         |            // if the predecessor cluster exists, the offset is given by its maximum
+         |            // and the result by the reconstruction of the offset. 
+   175717|            return index(predcluster, cluster[predcluster].back);
+         |        }
+         |    }
+         |
+         |    /**
+         |    The insertion method of the van Emde Boas tree. 
+         |    */
+         |    bool insert(size_t val)
+         |    {
+  4517324|        if (val >= capacity) // do not proceed at all, if the value won't fit into the tree 
+   630828|            return false;
+  3886681|        if (isLeaf) // pass control to the node
+  1390267|            return length(length + (bts(&value_, val) == 0));
+  2497593|        if (empty) // if the current node does not contain anything put the value inside. 
+         |        {
+   124650|            assert(empty);
+   124649|            front = val;
+   124652|            back = val;
+   124651|            assert(front == val);
+   124652|            assert(!empty);
+   124651|            assert(front == back);
+   124652|            assert(!empty);
+   124652|            return length(length + 1);
+         |        }
+         |
+  2373000|        assert(!empty);
+  2373065|        assert(front != NIL);
+  2373467|        assert(back != NIL);
+         |
+  4710317|        if (val == front || val == back) // if the value coincides with existing values, return 
+    61184|            return false;
+         |        // if the node contains a single value only, expand the node to a range and leave. 
+  2312101|        if (front == back)
+         |        {
+   112246|            if (front > val)
+    28544|                front = val;
+   112247|            if (back < val)
+    83707|                back = val;
+   112246|            return length(length + 1);
+         |        }
+         |        /*
+         |            if none of the cases above was true (all of them are break conditions) we have to compare the given value
+         |            with the values present and adapt the range limits. This replaces the value we want to insert. 
+         |        */
+         |
+         |        // a swap can not be used here, as front is itself a (property) method 
+  2200076|        if (val < front)
+         |        {
+    65086|            const tmpKey = val;
+    65086|            val = front;
+    65087|            front = tmpKey;
+    65088|            assert(front == tmpKey);
+         |        }
+         |
+         |        // a swap can not be used here, as back is itself a (property) method 
+  2200120|        if (val > back)
+         |        {
+   948461|            const tmpKey = val;
+   948465|            val = back;
+   948362|            back = tmpKey;
+   948542|            assert(back == tmpKey);
+         |        }
+         |
+         |        // calculate the index of the children cluster by high(value, uS) we want to descent to. 
+  2200035|        const nextTreeIndex = high(val);
+  2200620|        if (cluster[nextTreeIndex].empty)
+   426021|            summary.insert(nextTreeIndex);
+  2200434|        return length(length + cluster[nextTreeIndex].insert(low(val)));
+         |    }
+         |
+         |    /**
+         |    The cached value of the universe, provided on creation
+         |    */
+         |    size_t universe() @nogc const
+         |    {
+463976561|        return universe_;
+         |    }
+         |    private:
+         |    bool front(size_t val)
+         |    {
+   309126|        if (isLeaf) // pass control to the node
+000000000|            return insert(val);
+   309122|        value_ = value_ & higherMask; // otherwise, set the lower part of the value, keeping the higher bits
+   618248|        const retVal = ((value_ & lowerMask) == val) ? false : true;
+   309131|        value_ = value_ | val;
+   309129|        return retVal; // this is a bug!
+         |    }
+         |
+         |    bool back(size_t val)
+         |    {
+  1251611|        if (isLeaf) // pass control to the node
+000000000|            return insert(val);
+  1251435|        value_ = value_ & lowerMask; // otherwise, set the higher part of the value, keeping the lower bits
+  2502890|        const retVal = (value_ & higherMask) == (val << (CHAR_BIT * size_t.sizeof / 2)) ? false : true;
+  1251551|        value_ = value_ | (val << (CHAR_BIT * size_t.sizeof / 2));
+  1251713|        return retVal; // this is a bug!
+         |    }
+         |
+         |    bool length(size_t input) @nogc
+         |    in
+         |    {
+  6100114|        assert(input <= this.capacity);
+         |
+  6098619|        if (input != length)
+         |        {
+  9527010|            input > length ? assert(input - length == 1) : assert(length - input == 1);
+         |        }
+         |    }
+         |    do
+         |    {
+  6099087|        const retVal = length != input;
+         |
+  6099654|        length_ = input;
+         |
+  6099844|        if (!length_)
+   258793|            setEmpty;
+         |
+  6100254|        return retVal;
+         |    }
+         |
+         |    size_t index(size_t x, size_t y) const @nogc
+         |    {
+  8934575|        return .index(this.capacity, x, y);
+         |    }
+         |
+         |    size_t low(size_t val) const @nogc
+         |    {
+ 26709912|        return .low(this.capacity, val); 
+         |    }
+         |
+         |    size_t high(size_t val) const @nogc
+         |    {
+ 19908872|        return .high(this.capacity, val); 
+         |    }
+         |
+         |    void universe(size_t val)
+         |    {
+  1097958|        universe_ = val; 
+         |    }
+         |
+         |    size_t value_;
+         |    size_t universe_;
+         |    size_t length_;
+         |    typeof(this)* ptr_;
+         |
+         |    ref summary() inout
+  3538327|    in(!isLeaf)
+         |    { // return the last element of the array of children, stored in the node. 
+  3537532|        return ptr_[capacity.hSR];
+         |    }
+         |
+         |    auto cluster() inout
+ 27066387|    in(!isLeaf)
+         |    { // return all of the children in the stored array, but the last element 
+ 27049288|        return ptr_[0 .. capacity.hSR];
+         |    }
+         |
+         |    // The empty setter of a node. This function is kept for consistency in this module. 
+         |    void setEmpty() @nogc
+         |    {
+  2637718|        value_ = isLeaf ? 0 : -NIL;
+         |    }
+         |
+         |    // with the trick of https://forum.dlang.org/thread/erznqknpyxzxqivawnix@forum.dlang.org
+         |    int opApplyImpl(O)(O operations) const
+         |    {
+     1536|        int result;
+     1536|        size_t leading = this.front;
+         |
+         |        //for(size_t leading = front; leading < back; leading = this.next(leading)) 
+         |
+  2954661|        for (size_t i = 0; i < length; ++i)
+         |        {
+         |            static if (arity!operations == 1)
+   984597|                result = operations(leading);
+         |            else static if (arity!operations == 2)
+   491364|                result = operations(i, leading);
+         |            else 
+         |                assert(0); 
+         |
+  1476052|            if (result)
+000000000|                break;
+         |
+  1476052|            leading = this.next(leading);
+         |        }
+         |
+     1536|        return result;
+         |    }
+         |}
+         |
+         |private struct VEBtree(Flag!"inclusive" inclusive, alias root)
+         |{
+         |    @disable this(); 
+         |
+     3834|    this(ptrdiff_t front, ptrdiff_t back, size_t _length)
+         |    {
+     3836|        length = _length; 
+         |
+         |        static if (inclusive)
+         |        {
+     1152|            if(!length)
+         |            {
+      768|                backKey = root.universe; 
+      768|                length = 2; 
+         |            }
+         |            else
+         |            {
+      384|                if(front > 0)
+         |                {
+000000000|                    ++length;
+         |                }
+         |
+      384|                if(back <= root.universe)
+         |                {
+000000000|                    backKey = root.universe; 
+000000000|                    ++length; 
+         |                }
+      384|                else if(back <= root.capacity)
+         |                {
+      384|                    backKey = root.capacity; 
+      384|                    ++length; 
+         |                }
+         |                else
+         |                {
+         |                    debug
+         |                    {
+000000000|                        assert(back == root.universe || back == -1, format!"back: %d\n"(back));
+         |                    }
+         |                    else
+         |                    {
+         |                        assert(0); 
+         |                    }
+         |                }
+         |            }
+         |        }
+         |        else
+         |        {
+     2686|            frontKey = front;
+     2686|            backKey = back;
+         |        }
+         |    }
+         |    auto opBinaryRight(string op)(size_t key) @nogc if (op == "in")
+         |    {
+         |        return key in root;
+         |    }
+         |
+         |    static if (inclusive)
+         |    {
+         |        size_t frontKey;
+         |        size_t backKey;
+         |    }
+         |    else
+         |    {
+         |        ptrdiff_t frontKey;
+         |        ptrdiff_t backKey;
+         |    }
+         |
+         |    size_t length;
+         |
+         |    typeof(frontKey) front() @nogc
+         |    {
+  1479292|        return frontKey;
+         |    }
+         |
+         |    void popFront() @nogc
+  1478552|    in(!empty)
+         |    {
+  1478601|        --length;
+  1478619|        frontKey = next(frontKey);
+         |    }
+         |
+         |    typeof(backKey) back() @nogc
+         |    {
+      768|        return backKey;
+         |    }
+         |
+         |    void popBack()
+000000000|    in(!empty)
+         |    {
+000000000|        --length;
+000000000|        backKey = prev(backKey);
+         |    }
+         |
+         |    auto prev(size_t key) @nogc
+         |    {
+000000000|        const pred = root.prev(key);
+         |        static if (inclusive)
+000000000|            return pred == NIL ? 0 : pred;
+         |        else
+000000000|            return pred;
+         |    }
+         |
+         |    auto next(size_t key) @nogc
+         |    {
+  1478713|        const succ = root.next(key);
+         |        
+         |        static if(inclusive)
+         |            debug
+   491738|                if (succ == NIL)
+      768|                    assert(length <= 1, format!"key: %d, length: %d\n"(key, length)); 
+         |        
+         |        static if (inclusive)
+   491738|            if (succ == NIL)    
+      768|               return backKey;
+         |            else
+   490972|                return succ;
+         |        else
+   987132|            return succ;
+         |    }
+         |
+         |    bool empty() @nogc
+         |    {
+  3449116|        return !length;
+         |    }
+         |
+         |    auto save() const
+         |    {
+      384|        return vebTree!(inclusive, root)(frontKey, backKey, length);
+         |    }
+         |
+000000000|    size_t toHash() const nothrow { assert(0); }
+         |
+         |    /**
+         |    for comparison with an iterable, the iterable will be iterated, as the current object.
+         |    */
+         |    bool opEquals(T)(auto ref T input) const if (isIterable!T)
+         |    {
+         |        static if (is(T == typeof(this)))
+         |            return root == input.root;
+         |
+         |        static if (hasLength!T)
+      384|            if (length != input.length)
+000000000|                return false;
+         |
+      384|        auto copy = this.save;
+         |
+   491707|        foreach (el; input)
+         |        {
+   491323|            if (el != copy.front)
+000000000|                return false;
+   491328|            copy.popFront();
+         |        }
+         |
+      384|        return true;
+         |    }
+         |}
+source/vebtree.d is 94% covered

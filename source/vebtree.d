@@ -246,17 +246,8 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             const errorString = generateDebugString("UT: white box test: ", b, baseSize, currentSeed, M);
 
             assert(vT.value_ == 0, errorString);
-            if (vT.isLeaf)
-            {
-                assert(vT.ptr_ is null, errorString);
-                assert(vT.capacity == baseSize, errorString);
-            }
-            else
-            {
-                assert(!(vT.ptr_ is null), errorString);
-                assert(vT.capacity == (vT.universe - 1).nextPow2, errorString);
-            }
-
+            assert(vT.ptr_ is null, errorString);
+            assert(vT.capacity == baseSize, errorString);
             assert(vT.empty == true, errorString);
             assert(vT.front == NIL, errorString);
             assert(vT.back == NIL, errorString);
@@ -413,6 +404,8 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             assert(vT.capacity == (vT.universe - 1).nextPow2,
                     to!string("vT.capacity: " ~ to!string(
                         vT.capacity) ~ " vT.universe: " ~ to!string(vT.universe)));
+            assert(!(vT.ptr_ is null), errorString);
+            assert(vT.capacity == (vT.universe - 1).nextPow2, errorString);
         }
     }
 }
@@ -426,6 +419,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
         foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
+            currentSeed = 3989648295; 
             size_t M;
             auto vT = generateVEBtree!(1 << _)
                 (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
@@ -513,6 +507,14 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                 vT2.remove(rndNum); 
                 assert(!(rndNum in vT2));
                 assert(rndNum in vT);
+                assert(vT != vT2); 
+                rndNum = uniform(0UL, vT2.capacity);
+                if(!(rndNum in vT))
+                {
+                    assert(!(rndNum in vT), errorString ~ format!"rndNum: %d"(rndNum));
+                    assert(vT2.insert(rndNum), errorString);
+                }
+                assert(vT != vT2); 
                 //auto vT3 = vT2; 
                 //vT3.insert(rndNum); 
                 //assert(rndNum in vT3);
@@ -618,12 +620,6 @@ A van Emde Boas node implementation
 */
 struct VEBroot(size_t baseSize)
 {
-    /**
-    the maxSizeBound defines the maximum the tree can be constructed with. It is parametrized on the size of size_t and
-    changes dynamically with the architecture used. 
-    */
-    enum maxSizeBound = size_t(1) << (CHAR_BIT * size_t.sizeof / 2); // == uint.max + 1 on a 64-bit system
-
     size_t toHash() const nothrow { assert(0); }
 
     /**
