@@ -28,9 +28,8 @@ non-negative values can be used are infered from the term "key".
 /**
 See_also: Thomas H. Cormen, Clifford Stein, Ronald L. Rivest, and Charles E. Leiserson. 2001. <em>Introduction to
 Algorithms</em> (2nd ed.). McGraw-Hill Higher Education.
-further helpful source was the C++ implementation found here, 
+the idea of using bit operations was reused from the C++ implementation found at 
 http://www.keithschwarz.com/interesting/code/van-emde-boas-tree/
-where the idea of bit operations is taken from. 
 */
 
 module vebtree;
@@ -73,15 +72,6 @@ version (unittest)
     enum powersOfTwo = (CHAR_BIT * size_t.sizeof).iota.map!(a => size_t(1) << a);
     enum testMultiplier = 1; //16
 
-    ///
-    /*
-    static assert(!isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
-    static assert(isIterable!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))));
-    static assert(isInputRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
-    static assert(isBidirectionalRange!(ReturnType!(vebRoot!(CHAR_BIT * size_t.sizeof))[]));
-    static assert(!is(typeof(vebRoot(4)[2])));
-    */
-
     auto generateVEBtree(size_t baseSize)(uint currentSeed, size_t front, size_t back, ref size_t M)
     {
         static assert(baseSize > 1);
@@ -97,142 +87,9 @@ version (unittest)
     }
 }
 
-// bit mask representing uint.max. 
-enum size_t lowerMask = size_t.max >> (size_t.sizeof * CHAR_BIT / 2);
-// bit mask representing size_t.back without uint.max. 
-enum size_t higherMask = size_t.max ^ lowerMask;
-
-/*
-This function returns the higher square root of the given input. It is needed in the initialization step 
-of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
-summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
-*/
-size_t hSR(size_t val) @nogc
-{
-    return size_t(1) << (bsr(val) / 2 + ((val.bsr & 1) || ((val != 0) && (val & (val - 1)))));
-}
-//
-unittest
-{
-
-    auto currentSeed = unpredictableSeed();
-    const errorString = format!"UT: hSR. seed: %d"(currentSeed);
-    rndGen.seed(currentSeed); //initialize the random generator
-    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
-    auto hSR = hSR(M);
-    assert((hSR & (hSR - 1)) == 0, errorString);
-    import std.range : array;
-    import std.algorithm.searching : until;
-
-    auto check = powersOfTwo.until(hSR).array;
-    assert((check[$ - 1]) * (check[$ - 1]) < M, errorString);
-}
-
-/*
-This function returns the lower square root of the given input. It is needed by the indexing functions
-high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
-lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
-*/
-size_t lSR(size_t val) @nogc
-{
-    return size_t(1) << (bsr(val) / 2);
-}
-//
-unittest
-{
-    auto currentSeed = unpredictableSeed();
-    const errorString = format!"UT: lSR               seed: %d"(currentSeed);
-    rndGen.seed(currentSeed); //initialize the random generator
-    const M = uniform(1UL, uint.max); //set universe size to some integer. 
-    auto lSR = M.lSR;
-
-    assert((lSR & (lSR - 1)) == 0, errorString);
-    assert(lSR * lSR < M, errorString);
-    import std.algorithm.searching : find;
-
-    assert(!powersOfTwo.find(lSR).empty);
-}
-
-/*
-This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
-of a element in the tree. It is a part of the ideal indexing function.
-*/
-size_t high(size_t universe, size_t val) @nogc
-out (result; result == val / universe.lSR) // bithacks = keithschwarz
-{
-    return val >> (bsr(universe) / 2);
-}
-//
-unittest
-{
-    auto currentSeed = unpredictableSeed();
-    const errorString = format!"UT: high              seed: %d"(currentSeed);
-    rndGen.seed(currentSeed); //initialize the random generator
-    const M = uniform(1UL, uint.max); //set universe size to some integer. 
-    assert(M, errorString);
-    size_t U = M.nextPow2;
-    assert(U, errorString);
-    auto x = uniform(0UL, U);
-    assert(high(U, x) == x / U.lSR, errorString);
-}
-
-/*
-This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
-value inside a cluster. It is part of the ideal indexing function
-*/
-size_t low(size_t universe, size_t val) @nogc
-out (retVal; retVal == (val & ((size_t(1) << (bsr(universe) / 2)) - 1)))
-{
-    return val % universe.lSR;
-}
-//
-unittest
-{
-    auto currentSeed = unpredictableSeed();
-    const errorString = format!"UT: low               seed: %d"(currentSeed);
-    rndGen.seed(currentSeed); //initialize the random generator
-    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
-    size_t U = nextPow2(M);
-    auto x = uniform(0UL, U);
-    assert(low(U, x) == (x & (U.lSR - 1)), errorString);
-}
-
-/*
-This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
-relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
-*/
-size_t index(size_t universe, size_t x, size_t y) @nogc
-{
-    return (x * universe.lSR + y);
-}
-//
-unittest
-{
-    auto currentSeed = unpredictableSeed();
-    const errorString = format!"UT: index             seed: %d"(currentSeed);
-    rndGen.seed(currentSeed); //initialize the random generator
-    const M = uniform(0UL, uint.max); //set universe size to some integer. 
-    size_t U = M.nextPow2;
-    auto x = uniform(0UL, U);
-    assert(index(U, U.high(x), U.low(x)) == x, errorString);
-}
-
-auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
-{
-    static if(Args.length)
-    {
-        auto retVal = VEBtree!(inclusive, root)(args[0], args[1], args[2]);
-    }
-    else
-    {
-        auto retVal = VEBtree!(inclusive, root)(root.front, root.back, root.length);
-    }
-
-    return retVal;
-}
-
 static foreach (_; 1 .. size_t.sizeof - 1)
 {
+    ///
     unittest
     {
         enum baseSize = 1 << _;
@@ -243,7 +100,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
 
             auto vT = generateVEBtree!(1 << _)(currentSeed, 2UL, baseSize, M);
             assert(vT.universe == M);  
-            const errorString = generateDebugString("UT: white box test: ", b, baseSize, currentSeed, M);
+            const errorString = generateDebugString("UT: node test: ", b, baseSize, currentSeed, M);
 
             assert(vT.value_ == 0, errorString);
             assert(vT.ptr_ is null, errorString);
@@ -398,7 +255,7 @@ static foreach (_; 1 .. size_t.sizeof - 1)
             auto vT = generateVEBtree!(1 << _)
                     (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
             const errorString = 
-                generateDebugString("UT: black box test capacity and universe: ", b, 1 << _, currentSeed, M); 
+                generateDebugString("UT: tree test of capacity and universe: ", b, 1 << _, currentSeed, M); 
             
             assert(vT.universe == M, errorString);
             assert(vT.capacity == (vT.universe - 1).nextPow2,
@@ -419,12 +276,11 @@ static foreach (_; 1 .. size_t.sizeof - 1)
         foreach (b; (CHAR_BIT * size_t.sizeof * testMultiplier).iota.parallel)
         {
             auto currentSeed = unpredictableSeed();
-            currentSeed = 3989648295; 
             size_t M;
             auto vT = generateVEBtree!(1 << _)
                 (currentSeed, CHAR_BIT * size_t.sizeof, CHAR_BIT * size_t.sizeof * CHAR_BIT * size_t.sizeof, M);
             const errorString = 
-                generateDebugString("UT: black box test outer interface: ", b, 1 << _, currentSeed, M); 
+                generateDebugString("UT: tree test, general case: ", b, 1 << _, currentSeed, M); 
             size_t N = uniform(0UL, 2 * M); // independent parameter for testing
 
             // make an array of length N
@@ -620,8 +476,6 @@ A van Emde Boas node implementation
 */
 struct VEBroot(size_t baseSize)
 {
-    size_t toHash() const nothrow { assert(0); }
-
     /**
     yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
     */
@@ -634,7 +488,9 @@ struct VEBroot(size_t baseSize)
     }
 
     /**
-    []-slicing. Yields a "random access range" with the content of the tree, always containing zero and universe as keys
+    []-slicing. Yields a "random access range" with the content of the tree, always containing zero and the key after 
+    the maximum element as keys. The key after the maximal key is the universe, if the tree is empty or the maximal 
+    contained key is lesser then empty, otherwise the capacity of the tree. 
     */
     auto opIndex()
     {
@@ -654,6 +510,7 @@ struct VEBroot(size_t baseSize)
     */
     bool opEquals(T)(auto ref T input) const if (isIterable!T)
     {
+        import std.range : hasLength; 
         static if (hasLength!T)
             if (length != input.length)
                 return false;
@@ -750,6 +607,12 @@ struct VEBroot(size_t baseSize)
     
     @disable this(this); 
 
+    /**
+    It is allowed to construct the root of the van Emde Boas tree directly, without the convenience method.
+    Params: 
+        val = Expected universe size. The tree is generated so that every index below the universe size can be put 
+        inside.
+    */
     this(size_t val)
     in(val >= 2)
     {
@@ -778,6 +641,7 @@ struct VEBroot(size_t baseSize)
 
     /**
     This tree has a length notion: it is the current number of inserted elements. 
+    Returns: The current amount of contained keys. 
     */
     size_t length() const @nogc
     {
@@ -785,7 +649,8 @@ struct VEBroot(size_t baseSize)
     }
 
     /**
-    the empty method to inform of an empty state of the tree. 
+    the empty method to inform of an empty state of the tree.
+    Returns: Whether the tree is currently empty 
     */
     bool empty() const
     {
@@ -794,6 +659,7 @@ struct VEBroot(size_t baseSize)
 
     /**
     This yields whether the node is a leaf node.
+    Returns: Whether the node is a leaf. 
     */
     bool isLeaf() const @nogc
     {
@@ -802,6 +668,7 @@ struct VEBroot(size_t baseSize)
 
     /**
     The minimal contained key in the van Emde Boas tree
+    Returns: The minimal contained element of the tree 
     */
     size_t front() @nogc const
     {
@@ -814,6 +681,7 @@ struct VEBroot(size_t baseSize)
 
     /**
     The maximal contained key in the van Emde Boas tree
+    Returns: The maximal contained element of the tree
     */
     size_t back() @nogc const
     {
@@ -826,6 +694,7 @@ struct VEBroot(size_t baseSize)
 
     /**
     As a usual container, van Emde Boas tree provides the notion of capacity
+    Returns: The overall capacity of the tree. It is at least as high as the universe size provided on creation.
     */
     size_t capacity() @nogc const
     {
@@ -834,6 +703,9 @@ struct VEBroot(size_t baseSize)
 
     /**
     remove method of the van Emde Boas tree
+    Params: 
+        val = The key to remove
+    Returns: Whether the key was removed. It is true, when the key was present, false otherwise
     */
     bool remove(size_t val)
     {
@@ -905,6 +777,9 @@ struct VEBroot(size_t baseSize)
     
     /**
     The successor search method of the van Emde Boas tree. 
+    Params: 
+        val = The key the next greater neighbor of which is looked for.
+    Returns: Ditto. If the next greater neighbor is missing a number out of bounds of the tree is returned.
     */
     size_t next(size_t val) @nogc const
     {
@@ -958,6 +833,9 @@ struct VEBroot(size_t baseSize)
 
     /**
     The predecessor search method of the van Emde Boas tree. 
+    Params: 
+        val = The key the next smaller neighbor of which is looked for.
+    Returns: Ditto. If the next smaller neighbor is missing a number out of bounds of the tree is returned.
     */
     size_t prev(size_t val) @nogc
     {
@@ -1008,6 +886,9 @@ struct VEBroot(size_t baseSize)
 
     /**
     The insertion method of the van Emde Boas tree. 
+    Params: 
+        val = The key to insert
+    Returns: Whether the key was inserted. It is true, when the key was inserted, false otherwise
     */
     bool insert(size_t val)
     {
@@ -1074,12 +955,17 @@ struct VEBroot(size_t baseSize)
 
     /**
     The cached value of the universe, provided on creation
+    Returns: The cached input, provided on creation
     */
     size_t universe() @nogc const
     {
         return universe_;
     }
+
     private:
+
+    size_t toHash() const nothrow { assert(0); }
+    
     bool front(size_t val)
     {
         if (isLeaf) // pass control to the node
@@ -1192,10 +1078,11 @@ struct VEBroot(size_t baseSize)
     }
 }
 
-private struct VEBtree(Flag!"inclusive" inclusive, alias root)
+private: 
+struct VEBtree(Flag!"inclusive" inclusive, alias root)
 {
     @disable this(); 
-
+    
     this(ptrdiff_t front, ptrdiff_t back, size_t _length)
     {
         length = _length; 
@@ -1347,4 +1234,138 @@ private struct VEBtree(Flag!"inclusive" inclusive, alias root)
 
         return true;
     }
+}
+
+// bit mask representing uint.max. 
+enum size_t lowerMask = size_t.max >> (size_t.sizeof * CHAR_BIT / 2);
+// bit mask representing size_t.back without uint.max. 
+enum size_t higherMask = size_t.max ^ lowerMask;
+
+/*
+This function returns the higher square root of the given input. It is needed in the initialization step 
+of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
+summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
+*/
+size_t hSR(size_t val) @nogc
+{
+    return size_t(1) << (bsr(val) / 2 + ((val.bsr & 1) || ((val != 0) && (val & (val - 1)))));
+}
+//
+unittest
+{
+
+    auto currentSeed = unpredictableSeed();
+    const errorString = format!"UT: hSR. seed: %d"(currentSeed);
+    rndGen.seed(currentSeed); //initialize the random generator
+    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
+    auto hSR = hSR(M);
+    assert((hSR & (hSR - 1)) == 0, errorString);
+    import std.range : array;
+    import std.algorithm.searching : until;
+
+    auto check = powersOfTwo.until(hSR).array;
+    assert((check[$ - 1]) * (check[$ - 1]) < M, errorString);
+}
+
+/*
+This function returns the lower square root of the given input. It is needed by the indexing functions
+high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
+lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
+*/
+size_t lSR(size_t val) @nogc
+{
+    return size_t(1) << (bsr(val) / 2);
+}
+//
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    const errorString = format!"UT: lSR               seed: %d"(currentSeed);
+    rndGen.seed(currentSeed); //initialize the random generator
+    const M = uniform(1UL, uint.max); //set universe size to some integer. 
+    auto lSR = M.lSR;
+
+    assert((lSR & (lSR - 1)) == 0, errorString);
+    assert(lSR * lSR < M, errorString);
+    import std.algorithm.searching : find;
+
+    assert(!powersOfTwo.find(lSR).empty);
+}
+
+/*
+This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
+of a element in the tree. It is a part of the ideal indexing function.
+*/
+size_t high(size_t universe, size_t val) @nogc
+out (result; result == val / universe.lSR) // bithacks = keithschwarz
+{
+    return val >> (bsr(universe) / 2);
+}
+//
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    const errorString = format!"UT: high              seed: %d"(currentSeed);
+    rndGen.seed(currentSeed); //initialize the random generator
+    const M = uniform(1UL, uint.max); //set universe size to some integer. 
+    assert(M, errorString);
+    size_t U = M.nextPow2;
+    assert(U, errorString);
+    auto x = uniform(0UL, U);
+    assert(high(U, x) == x / U.lSR, errorString);
+}
+
+/*
+This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
+value inside a cluster. It is part of the ideal indexing function
+*/
+size_t low(size_t universe, size_t val) @nogc
+out (retVal; retVal == (val & ((size_t(1) << (bsr(universe) / 2)) - 1)))
+{
+    return val % universe.lSR;
+}
+//
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    const errorString = format!"UT: low               seed: %d"(currentSeed);
+    rndGen.seed(currentSeed); //initialize the random generator
+    size_t M = uniform(1UL, uint.max); //set universe size to some integer. 
+    size_t U = nextPow2(M);
+    auto x = uniform(0UL, U);
+    assert(low(U, x) == (x & (U.lSR - 1)), errorString);
+}
+
+/*
+This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
+relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
+*/
+size_t index(size_t universe, size_t x, size_t y) @nogc
+{
+    return (x * universe.lSR + y);
+}
+//
+unittest
+{
+    auto currentSeed = unpredictableSeed();
+    const errorString = format!"UT: index             seed: %d"(currentSeed);
+    rndGen.seed(currentSeed); //initialize the random generator
+    const M = uniform(0UL, uint.max); //set universe size to some integer. 
+    size_t U = M.nextPow2;
+    auto x = uniform(0UL, U);
+    assert(index(U, U.high(x), U.low(x)) == x, errorString);
+}
+
+auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
+{
+    static if(Args.length)
+    {
+        auto retVal = VEBtree!(inclusive, root)(args[0], args[1], args[2]);
+    }
+    else
+    {
+        auto retVal = VEBtree!(inclusive, root)(root.front, root.back, root.length);
+    }
+
+    return retVal;
 }
