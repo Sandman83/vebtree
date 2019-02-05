@@ -474,7 +474,7 @@ auto vebRoot(size_t baseSize = CHAR_BIT * size_t.sizeof)(size_t universe)
 /**
 A van Emde Boas node implementation
 */
-struct VEBroot(size_t baseSize)
+struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
 {
     /**
     yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
@@ -492,17 +492,17 @@ struct VEBroot(size_t baseSize)
     the maximum element as keys. The key after the maximal key is the universe, if the tree is empty or the maximal 
     contained key is lesser then empty, otherwise the capacity of the tree. 
     */
-    auto opIndex()
+    auto opIndex() @nogc
     {
-        return vebTree!(Yes.inclusive, this)();
+        return vebTree!(Yes.inclusive)(this);
     }
 
     /**
     ()-slicing. Yields a "random access range" with the content of the tree. Keys can be NIL. 
     */
-    auto opCall()
+    auto opCall() @nogc
     {
-        return vebTree!(No.inclusive, this)();
+        return vebTree!(No.inclusive)(this);
     }
 
     /**
@@ -531,7 +531,7 @@ struct VEBroot(size_t baseSize)
     member method for the case universe size < base size. Overloads by passing only one parameter, which is
     the bit number of interest. Returns whether the appropriate bit inside the bitvector is set.
     */
-    bool opBinaryRight(string op)(size_t key) @nogc if (op == "in")
+    bool opBinaryRight(string op)(size_t key) @nogc const if (op == "in")
     {
         if (key >= this.capacity)
             return false;
@@ -652,7 +652,7 @@ struct VEBroot(size_t baseSize)
     the empty method to inform of an empty state of the tree.
     Returns: Whether the tree is currently empty 
     */
-    bool empty() const
+    bool empty() const @nogc
     {
         return isLeaf ? value_ == 0 : value_ == -NIL;
     }
@@ -707,7 +707,7 @@ struct VEBroot(size_t baseSize)
         val = The key to remove
     Returns: Whether the key was removed. It is true, when the key was present, false otherwise
     */
-    bool remove(size_t val)
+    bool remove(size_t val) @nogc
     {
         if (val >= capacity) // do not proceed at all, if the value can't be in the tree 
             return false;
@@ -837,7 +837,7 @@ struct VEBroot(size_t baseSize)
         val = The key the next smaller neighbor of which is looked for.
     Returns: Ditto. If the next smaller neighbor is missing a number out of bounds of the tree is returned.
     */
-    size_t prev(size_t val) @nogc
+    size_t prev(size_t val) @nogc const
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -890,7 +890,7 @@ struct VEBroot(size_t baseSize)
         val = The key to insert
     Returns: Whether the key was inserted. It is true, when the key was inserted, false otherwise
     */
-    bool insert(size_t val)
+    bool insert(size_t val) @nogc
     {
         if (val >= capacity) // do not proceed at all, if the value won't fit into the tree 
             return false;
@@ -964,9 +964,9 @@ struct VEBroot(size_t baseSize)
 
     private:
 
-    size_t toHash() const nothrow { assert(0); }
+    size_t toHash() @nogc const nothrow { assert(0); }
     
-    bool front(size_t val)
+    bool front(size_t val) @nogc
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -976,7 +976,7 @@ struct VEBroot(size_t baseSize)
         return retVal; // this is a bug!
     }
 
-    bool back(size_t val)
+    bool back(size_t val) @nogc
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -1023,7 +1023,7 @@ struct VEBroot(size_t baseSize)
         return .high(this.capacity, val); 
     }
 
-    void universe(size_t val)
+    void universe(size_t val) @nogc
     {
         universe_ = val; 
     }
@@ -1033,20 +1033,20 @@ struct VEBroot(size_t baseSize)
     size_t length_;
     typeof(this)* ptr_;
 
-    ref summary() inout
+    ref summary() inout @nogc
     in(!isLeaf)
     { // return the last element of the array of children, stored in the node. 
         return ptr_[capacity.hSR];
     }
 
-    auto cluster() inout
+    auto cluster() inout @nogc
     in(!isLeaf)
     { // return all of the children in the stored array, but the last element 
         return ptr_[0 .. capacity.hSR];
     }
 
     // The empty setter of a node. This function is kept for consistency in this module. 
-    void setEmpty() @nogc
+    void setEmpty() @nogc 
     {
         value_ = isLeaf ? 0 : -NIL;
     }
@@ -1079,57 +1079,8 @@ struct VEBroot(size_t baseSize)
 }
 
 private: 
-struct VEBtree(Flag!"inclusive" inclusive, alias root)
+struct VEBtree(Flag!"inclusive" inclusive, T)
 {
-    @disable this(); 
-    
-    this(ptrdiff_t front, ptrdiff_t back, size_t _length)
-    {
-        length = _length; 
-
-        static if (inclusive)
-        {
-            if(!length)
-            {
-                backKey = root.universe; 
-                length = 2; 
-            }
-            else
-            {
-                if(front > 0)
-                {
-                    ++length;
-                }
-
-                if(back <= root.universe)
-                {
-                    backKey = root.universe; 
-                    ++length; 
-                }
-                else if(back <= root.capacity)
-                {
-                    backKey = root.capacity; 
-                    ++length; 
-                }
-                else
-                {
-                    debug
-                    {
-                        assert(back == root.universe || back == -1, format!"back: %d\n"(back));
-                    }
-                    else
-                    {
-                        assert(0); 
-                    }
-                }
-            }
-        }
-        else
-        {
-            frontKey = front;
-            backKey = back;
-        }
-    }
     auto opBinaryRight(string op)(size_t key) @nogc if (op == "in")
     {
         return key in root;
@@ -1165,7 +1116,7 @@ struct VEBtree(Flag!"inclusive" inclusive, alias root)
         return backKey;
     }
 
-    void popBack()
+    void popBack() @nogc
     in(!empty)
     {
         --length;
@@ -1204,12 +1155,12 @@ struct VEBtree(Flag!"inclusive" inclusive, alias root)
         return !length;
     }
 
-    auto save() const
+    auto save() const @nogc
     {
-        return vebTree!(inclusive, root)(frontKey, backKey, length);
+        return vebTree!(inclusive)(*root_, frontKey, backKey, length);
     }
 
-    size_t toHash() const nothrow { assert(0); }
+    size_t toHash() @nogc const nothrow { assert(0); }
 
     /**
     for comparison with an iterable, the iterable will be iterated, as the current object.
@@ -1233,6 +1184,70 @@ struct VEBtree(Flag!"inclusive" inclusive, alias root)
         }
 
         return true;
+    }
+    
+    @disable this(); 
+    
+    private: 
+    T* root_;
+    ref T root() { return *root_; }
+
+    this(T, Args...)(ref T _root, Args args) @nogc
+    {
+        root_ = &_root; 
+        
+        static if(Args.length)
+        {
+            frontKey = args[0];
+            backKey = args[1];
+            length = args[2]; 
+        }
+        else
+        {
+            length = root.length; 
+            static if (inclusive)
+            {
+                if(!length)
+                {
+                    backKey = root.universe; 
+                    length = 2; 
+                }
+                else
+                {
+                    if(root.front > 0)
+                    {
+                        ++length;
+                    }
+
+                    if(root.back <= root.universe)
+                    {
+                        backKey = root.universe; 
+                        ++length; 
+                    }
+                    else if(root.back <= root.capacity)
+                    {
+                        backKey = root.capacity; 
+                        ++length; 
+                    }
+                    else
+                    {
+                        debug
+                        {
+                            assert(root.back == root.universe || root.back == -1, format!"back: %d\n"(root.back));
+                        }
+                        else
+                        {
+                            assert(0); 
+                        }
+                    }
+                }
+            }
+            else
+            {
+                frontKey = root.front;
+                backKey = root.back;
+            }
+        }
     }
 }
 
@@ -1356,16 +1371,7 @@ unittest
     assert(index(U, U.high(x), U.low(x)) == x, errorString);
 }
 
-auto vebTree(Flag!"inclusive" inclusive, alias root, Args...)(Args args)
+auto vebTree(Flag!"inclusive" inclusive, T, Args...)(ref T root, Args args)
 {
-    static if(Args.length)
-    {
-        auto retVal = VEBtree!(inclusive, root)(args[0], args[1], args[2]);
-    }
-    else
-    {
-        auto retVal = VEBtree!(inclusive, root)(root.front, root.back, root.length);
-    }
-
-    return retVal;
+    return VEBtree!(inclusive, T)(root, args);
 }
