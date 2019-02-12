@@ -4,7 +4,7 @@ This repository contains a Van Emde Boas tree written in D. It operates on uniqu
 
 See
 
-https://en.wikipedia.org/wiki/Van_Emde_Boas_tree
+<https://en.wikipedia.org/wiki/Van_Emde_Boas_tree>
 
 and 
 
