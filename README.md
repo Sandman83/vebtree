@@ -4,7 +4,7 @@ This repository contains a Van Emde Boas tree written in D. It operates on uniqu
 
 See
 
-https://en.wikipedia.org/wiki/Van_Emde_Boas_tree
+<https://en.wikipedia.org/wiki/Van_Emde_Boas_tree>
 
 and 
 
@@ -206,9 +206,14 @@ void main()
 }
 ```
 
+Measurements taken on a Intel(R) Core(TM) i7 CPU @ 2.60GHz with 16GB of memory. 
+Compiled with dub run --build=release --compiler=ldc2
+
+The tree can be expanded to contain all key up to uint max. The construction lasts appropriate time for this, however,
+all operations remain fast. 
 
 Copyright: Copyright (c) 2016- Alexander Orlov. All rights reserved.
 
-License: https://opensource.org/licenses/MIT, MIT License
+License: https://opensource.org/licenses/BSL-1.0, BSL License
 
 Author: Alexander Orlov, sascha.orlov@gmail.com
