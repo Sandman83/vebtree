@@ -496,6 +496,44 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     }
 
     /**
+    slicing operation. recieves the opSlice!0(x,y) object from x .. y input. 
+    as used with [] brackets, works as slicing with inclusion. 
+    
+    Note: This operation is not natural to the vebtree, as the indicies of keys are not known in general. 
+    However, notably for the case of inclusive slicing (and indeed only working for this kind) one can iterate, e.g. 
+    over all but some indicies from any end of the tree. This method is provided for such iterations.
+    
+    During preparation, an inclusive slice is created and popFront (according popBack) is called corresponding times, 
+    to remove the approprate number of elements from the front and from the back of the returned range.
+    */
+    auto opIndex(size_t[2] input) @nogc
+    in(input[1] - input[0] <= this.length)
+    {
+        auto retVal = vebTree!(Yes.inclusive)(this);
+     
+        import std.range : iota; 
+        import std.algorithm.iteration : each; 
+     
+        input[0].iota.each!(i => retVal.popFront); 
+        (this.length - input[1]).iota.each!(i => retVal.popBack); 
+     
+        return retVal;
+    }
+
+    /// opDollar works as "intended" and returns the length of the underlying array
+    @property size_t opDollar(size_t dim : 0)() @nogc
+    {
+        return this.length; 
+    }
+
+    /// opSlice for slicing operation returns the static array of two numbers, for opIndex interop
+    size_t[2] opSlice(size_t dim : 0)(size_t x, size_t y) @nogc
+    {
+        import std.array : staticArray; 
+        return [x, y].staticArray!size_t;
+    }
+
+    /**
     ()-slicing. Yields a "random access range" with the content of the tree. Keys can be NIL. 
     */
     auto opCall() @nogc
