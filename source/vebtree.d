@@ -371,17 +371,15 @@ static foreach (_; 1 .. size_t.sizeof - 1)
                     assert(vT2.insert(rndNum), errorString);
                 }
                 assert(vT != vT2); 
-                //auto vT3 = vT2; 
-                //vT3.insert(rndNum); 
-                //assert(rndNum in vT3);
-                //assert(rndNum in vT2); 
-                //assert(vT2.length == vT3.length); 
             }
 
             const rangeExclusive = vT(); 
             assert(vT == rangeExclusive); 
 
             auto rangeInclusive = vT[]; 
+            import std.algorithm.comparison : equal;
+            import std.algorithm.iteration : uniq; 
+            assert(equal(uniq(rangeInclusive), rangeInclusive));
             import std.range : enumerate; 
             foreach(i, el; rangeInclusive.enumerate)
             {
@@ -1215,31 +1213,15 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
                 else
                 {
                     if(root.front > 0)
-                    {
                         ++length;
-                    }
 
                     if(root.back <= root.universe)
-                    {
-                        backKey = root.universe; 
-                        ++length; 
-                    }
+                        backKey = root.universe;
                     else if(root.back <= root.capacity)
-                    {
-                        backKey = root.capacity; 
-                        ++length; 
-                    }
-                    else
-                    {
-                        debug
-                        {
-                            assert(root.back == root.universe || root.back == -1, format!"back: %d\n"(root.back));
-                        }
-                        else
-                        {
-                            assert(0); 
-                        }
-                    }
+                        backKey = root.capacity;
+
+                    if(root.back < backKey)
+                        ++length;
                 }
             }
             else
