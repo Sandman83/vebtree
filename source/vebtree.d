@@ -55,14 +55,14 @@ version (unittest)
     import std.math : sqrt;
 
     // helping function for output a given value in binary representation
-    void bin(size_t n)
+    void bin(size_t n) pure
     {
         /* step 1 */
         if (n > 1)
             bin(n / 2);
         /* step 2 */
 
-        printf("%d", n % 2);
+        //printf("%d", n % 2);
     }
 
     /// precalculated powers of two table for unit testing
@@ -76,7 +76,7 @@ version (unittest)
     {
         static assert(baseSize > 1);
         static assert((baseSize & (baseSize - 1)) == 0);
-        assert(front >= 2);
+        assert(!!front != front); assert(front >= 2);
         rndGen.seed(currentSeed); //initialize the random generator
         M = uniform(front, back + 1); // parameter for construction
         return vebRoot!baseSize(M);
@@ -477,7 +477,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     /**
     yields a deep copy of the node. I. e. copies all data in children and allocates another tree 
     */
-    typeof(this) dup()
+    typeof(this) dup() pure
     {
         auto retVal = typeof(this)(universe);
         foreach (el; opCall())
@@ -490,7 +490,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     the maximum element as keys. The key after the maximal key is the universe, if the tree is empty or the maximal 
     contained key is lesser then empty, otherwise the capacity of the tree. 
     */
-    auto opIndex() @nogc
+    auto opIndex() @nogc pure
     {
         return vebTree!(Yes.inclusive)(this);
     }
@@ -506,7 +506,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     During preparation, an inclusive slice is created and popFront (according popBack) is called corresponding times, 
     to remove the approprate number of elements from the front and from the back of the returned range.
     */
-    auto opIndex(size_t[2] input) @nogc
+    auto opIndex(size_t[2] input) @nogc pure
     in(input[1] - input[0] <= this.length)
     {
         auto retVal = vebTree!(Yes.inclusive)(this);
@@ -521,7 +521,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     }
 
     /// opDollar works as "intended" and returns the length of the underlying array
-    @property size_t opDollar(size_t dim : 0)() @nogc
+    @property size_t opDollar(size_t dim : 0)() @nogc pure
     {
         return this.length; 
     }
@@ -536,7 +536,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     /**
     ()-slicing. Yields a "random access range" with the content of the tree. Keys can be NIL. 
     */
-    auto opCall() @nogc
+    auto opCall() @nogc pure
     {
         return vebTree!(No.inclusive)(this);
     }
@@ -649,9 +649,11 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         val = Expected universe size. The tree is generated so that every index below the universe size can be put 
         inside.
     */
-    this(size_t val)
-    in(val >= 2)
-    {
+    this(size_t val) pure
+    in(!!val != val) //the same as: val >= 2
+    { 
+        // the restriction is somewhat technical: if a tree is created, then the universe size is at least 2,
+        // it cannot be less. 
         universe = val;
         setEmpty;
         
@@ -679,7 +681,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     This tree has a length notion: it is the current number of inserted elements. 
     Returns: The current amount of contained keys. 
     */
-    size_t length() const @nogc
+    size_t length() const @nogc pure
     {
         return length_;
     }
@@ -688,7 +690,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     the empty method to inform of an empty state of the tree.
     Returns: Whether the tree is currently empty 
     */
-    bool empty() const @nogc
+    bool empty() const @nogc pure
     {
         return isLeaf ? value_ == 0 : value_ == -NIL;
     }
@@ -697,7 +699,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     This yields whether the node is a leaf node.
     Returns: Whether the node is a leaf. 
     */
-    bool isLeaf() const @nogc
+    bool isLeaf() const @nogc pure
     {
         return universe <= baseSize;
     }
@@ -706,7 +708,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     The minimal contained key in the van Emde Boas tree
     Returns: The minimal contained element of the tree 
     */
-    size_t front() @nogc const
+    size_t front() @nogc const pure
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -719,7 +721,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     The maximal contained key in the van Emde Boas tree
     Returns: The maximal contained element of the tree
     */
-    size_t back() @nogc const
+    size_t back() @nogc const pure
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -732,7 +734,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     As a usual container, van Emde Boas tree provides the notion of capacity
     Returns: The overall capacity of the tree. It is at least as high as the universe size provided on creation.
     */
-    size_t capacity() @nogc const
+    size_t capacity() @nogc const pure
     {
         return isLeaf ? baseSize : (universe - 1).nextPow2;
     }
@@ -743,7 +745,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         val = The key to remove
     Returns: Whether the key was removed. It is true, when the key was present, false otherwise
     */
-    bool remove(size_t val) @nogc
+    bool remove(size_t val) @nogc pure
     {
         if (val >= capacity) // do not proceed at all, if the value can't be in the tree 
             return false;
@@ -817,7 +819,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         val = The key the next greater neighbor of which is looked for.
     Returns: Ditto. If the next greater neighbor is missing a number out of bounds of the tree is returned.
     */
-    size_t next(size_t val) @nogc const
+    size_t next(size_t val) @nogc const pure
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -873,7 +875,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         val = The key the next smaller neighbor of which is looked for.
     Returns: Ditto. If the next smaller neighbor is missing a number out of bounds of the tree is returned.
     */
-    size_t prev(size_t val) @nogc const
+    size_t prev(size_t val) @nogc const pure
     {
         if (empty) // do not proceed at all, if the root is empty
             return NIL;
@@ -926,7 +928,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         val = The key to insert
     Returns: Whether the key was inserted. It is true, when the key was inserted, false otherwise
     */
-    bool insert(size_t val) @nogc
+    bool insert(size_t val) @nogc pure
     {
         if (val >= capacity) // do not proceed at all, if the value won't fit into the tree 
             return false;
@@ -993,16 +995,16 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     The cached value of the universe, provided on creation
     Returns: The cached input, provided on creation
     */
-    size_t universe() @nogc const
+    size_t universe() @nogc const pure
     {
         return universe_;
     }
 
     private:
 
-    size_t toHash() @nogc const nothrow { assert(0); }
+    size_t toHash() @nogc const nothrow pure { assert(0); }
     
-    bool front(size_t val) @nogc
+    bool front(size_t val) @nogc pure
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -1012,7 +1014,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         return retVal; // this is a bug!
     }
 
-    bool back(size_t val) @nogc
+    bool back(size_t val) @nogc pure
     {
         if (isLeaf) // pass control to the node
             return insert(val);
@@ -1022,7 +1024,7 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         return retVal; // this is a bug!
     }
 
-    bool length(size_t input) @nogc
+    bool length(size_t input) @nogc pure
     in
     {
         assert(input <= this.capacity);
@@ -1044,22 +1046,22 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
         return retVal;
     }
 
-    size_t index(size_t x, size_t y) const @nogc
+    size_t index(size_t x, size_t y) const @nogc pure
     {
         return .index(this.capacity, x, y);
     }
 
-    size_t low(size_t val) const @nogc
+    size_t low(size_t val) const @nogc pure
     {
         return .low(this.capacity, val); 
     }
 
-    size_t high(size_t val) const @nogc
+    size_t high(size_t val) const @nogc pure
     {
         return .high(this.capacity, val); 
     }
 
-    void universe(size_t val) @nogc
+    void universe(size_t val) @nogc pure
     {
         universe_ = val; 
     }
@@ -1069,20 +1071,20 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
     size_t length_;
     typeof(this)* ptr_;
 
-    ref summary() inout @nogc
+    ref summary() inout @nogc pure
     in(!isLeaf)
     { // return the last element of the array of children, stored in the node. 
         return ptr_[capacity.hSR];
     }
 
-    auto cluster() inout @nogc
+    auto cluster() inout @nogc pure
     in(!isLeaf)
     { // return all of the children in the stored array, but the last element 
         return ptr_[0 .. capacity.hSR];
     }
 
     // The empty setter of a node. This function is kept for consistency in this module. 
-    void setEmpty() @nogc 
+    void setEmpty() @nogc pure
     {
         value_ = isLeaf ? 0 : -NIL;
     }
@@ -1135,31 +1137,31 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
 
     size_t length;
 
-    typeof(frontKey) front() @nogc
+    typeof(frontKey) front() @nogc pure
     {
         return frontKey;
     }
 
-    void popFront() @nogc
+    void popFront() @nogc pure
     in(!empty)
     {
         --length;
         frontKey = next(frontKey);
     }
 
-    typeof(backKey) back() @nogc
+    typeof(backKey) back() @nogc pure
     {
         return backKey;
     }
 
-    void popBack() @nogc
+    void popBack() @nogc pure
     in(!empty)
     {
         --length;
         backKey = prev(backKey);
     }
 
-    auto prev(size_t key) @nogc
+    auto prev(size_t key) @nogc pure
     {
         const pred = root.prev(key);
         static if (inclusive)
@@ -1168,7 +1170,7 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
             return pred;
     }
 
-    auto next(size_t key) @nogc
+    auto next(size_t key) @nogc pure
     {
         const succ = root.next(key);
         
@@ -1186,17 +1188,17 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
             return succ;
     }
 
-    bool empty() @nogc
+    bool empty() @nogc pure
     {
         return !length;
     }
 
-    auto save() const @nogc
+    auto save() const @nogc pure
     {
         return vebTree!(inclusive)(*root_, frontKey, backKey, length);
     }
 
-    size_t toHash() @nogc const nothrow { assert(0); }
+    size_t toHash() @nogc const nothrow pure { assert(0); }
 
     /**
     for comparison with an iterable, the iterable will be iterated, as the current object.
@@ -1226,7 +1228,7 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
     
     private: 
     T* root_;
-    ref T root() { return *root_; }
+    ref T root() pure { return *root_; }
 
     this(T, Args...)(ref T _root, Args args) @nogc
     {
@@ -1281,7 +1283,7 @@ This function returns the higher square root of the given input. It is needed in
 of the VEB tree to calculate the number of children of a given layer. And this is the universe size of the
 summary of a node. The upper square root is defined by 2^{\lceil(\lg u)/2\rceil}
 */
-size_t hSR(size_t val) @nogc
+size_t hSR(size_t val) @nogc pure
 {
     return size_t(1) << (bsr(val) / 2 + ((val.bsr & 1) || ((val != 0) && (val & (val - 1)))));
 }
@@ -1307,7 +1309,7 @@ This function returns the lower square root of the given input. It is needed by 
 high(x), low(x) and index(x,y) of elements in the tree. Also, this is the universe size of a child of a node. The
 lower square root is defined by 2^{\lfloor(\lgu)/2\rfloor}
 */
-size_t lSR(size_t val) @nogc
+size_t lSR(size_t val) @nogc pure
 {
     return size_t(1) << (bsr(val) / 2);
 }
@@ -1331,7 +1333,7 @@ unittest
 This is an index function defined as \lfloor x/lSR(u)\rfloor. It is needed to find the appropriate cluster
 of a element in the tree. It is a part of the ideal indexing function.
 */
-size_t high(size_t universe, size_t val) @nogc
+size_t high(size_t universe, size_t val) @nogc pure
 out (result; result == val / universe.lSR) // bithacks = keithschwarz
 {
     return val >> (bsr(universe) / 2);
@@ -1354,7 +1356,7 @@ unittest
 This is an index function defined as fmod(value, lSR(universe)). It is needed to find the appropriate
 value inside a cluster. It is part of the ideal indexing function
 */
-size_t low(size_t universe, size_t val) @nogc
+size_t low(size_t universe, size_t val) @nogc pure
 out (retVal; retVal == (val & ((size_t(1) << (bsr(universe) / 2)) - 1)))
 {
     return val % universe.lSR;
@@ -1375,7 +1377,7 @@ unittest
 This is an index function to retain the searched value. It is defined as x * lSR(u) + y. Beyond this, the
 relation holds: x = index(high(x), x.low). This is the ideal indexing function of the tree. 
 */
-size_t index(size_t universe, size_t x, size_t y) @nogc
+size_t index(size_t universe, size_t x, size_t y) @nogc pure
 {
     return (x * universe.lSR + y);
 }
