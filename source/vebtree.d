@@ -553,6 +553,13 @@ struct VEBroot(size_t baseSize) if((baseSize & (baseSize - 1)) == 0)
 
         size_t currentElem = this.front;
 
+        /*  The rewrite
+            for (auto __rangeCopy = input; !__rangeCopy.empty; __rangeCopy.popFront)
+            does not work, because at least this very type is not copyable. However, without this rewrite, 
+            the delegate of opApply cannot be pure: 
+            https://forum.dlang.org/post/ebcihkybyafilzruimxn@forum.dlang.org
+        */
+        
         foreach (el; input)
         {
             if (el != currentElem)
@@ -1214,6 +1221,12 @@ struct VEBtree(Flag!"inclusive" inclusive, T)
 
         auto copy = this.save;
 
+        /*  The rewrite
+            for (auto __rangeCopy = input; !__rangeCopy.empty; __rangeCopy.popFront)
+            does not work, because at least this very type is not copyable. However, without this rewrite, 
+            the delegate of opApply cannot be pure: 
+            https://forum.dlang.org/post/ebcihkybyafilzruimxn@forum.dlang.org
+        */
         foreach (el; input)
         {
             if (el != copy.front)
